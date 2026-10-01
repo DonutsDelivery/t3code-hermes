@@ -1355,6 +1355,8 @@ it.layer(hermesAdapterTestLayer)("Hermes background work", (it) => {
         makeMockHermesWrapper({
           T3_ACP_HERMES_BACKGROUND: "1",
           T3_ACP_HERMES_BACKGROUND_FINISH: "after-turn",
+          T3_ACP_HERMES_NOTIFICATION_ID: "deleg-receipt-1",
+          T3_ACP_HERMES_REPEAT_NOTIFICATION: "1",
           T3_ACP_REQUEST_LOG_PATH: requestLogPath,
         }),
       );
@@ -1372,6 +1374,8 @@ it.layer(hermesAdapterTestLayer)("Hermes background work", (it) => {
 
       const first = yield* adapter.sendTurn({ threadId, input: "watch CI", attachments: [] });
       yield* Deferred.await(woke);
+      yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 200)));
+      assert.lengthOf(yield* promptTexts(requestLogPath), 2);
 
       const [, wake] = events.filter((event) => event.type === "turn.started");
       assert.isDefined(wake);
@@ -1382,6 +1386,17 @@ it.layer(hermesAdapterTestLayer)("Hermes background work", (it) => {
       );
       const [, wakePrompt] = yield* promptTexts(requestLogPath);
       assert.match(wakePrompt ?? "", /^\[IMPORTANT: Background process proc_ci000001 exited/);
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      const initialize = requests.find((request) => request.method === "initialize");
+      assert.deepEqual(
+        (initialize?.params as { clientCapabilities: { _meta?: unknown } }).clientCapabilities
+          ._meta,
+        { "hermes.backgroundNotifications": 1 },
+      );
+      const [, wakeRequest] = requests.filter((request) => request.method === "session/prompt");
+      assert.deepEqual((wakeRequest?.params as { _meta?: unknown })._meta, {
+        "hermes.notificationIds": ["deleg-receipt-1"],
+      });
       assert.equal((yield* adapter.listSessions())[0]?.status, "ready");
       yield* adapter.stopSession(threadId);
     }),

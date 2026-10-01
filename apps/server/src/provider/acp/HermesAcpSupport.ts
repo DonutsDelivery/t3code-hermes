@@ -288,6 +288,7 @@ export const makeHermesAcpRuntime = (
         ...input,
         spawn: buildHermesAcpSpawnInput(input.hermesSettings, input.cwd, input.environment),
         authMethodId: HERMES_AUTH_METHOD_ID,
+        clientCapabilities: { _meta: { "hermes.backgroundNotifications": 1 } },
         transformSessionUpdate: dropHermesRedirectAck,
         isPassthroughToolCallUpdate: isHermesDelegationProgress,
       }).pipe(

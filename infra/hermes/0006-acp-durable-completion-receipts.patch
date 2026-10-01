@@ -1,0 +1,404 @@
+diff --git a/acp_adapter/background.py b/acp_adapter/background.py
+index 98b599fe59..713a8fbc7a 100644
+--- a/acp_adapter/background.py
++++ b/acp_adapter/background.py
+@@ -108,11 +108,29 @@ class BackgroundNotifier:
+         self._loop: asyncio.AbstractEventLoop | None = None
+         self._turn_ended = threading.Event()
+         self._thread: threading.Thread | None = None
++        self._pending: dict[str, dict[str, tuple[dict, str]]] = {}
++        self._pending_lock = threading.Lock()
++
++    def acknowledge(self, session_id: str, ids: list[str]) -> None:
++        """Settle only receipts this connection offered to this exact ACP session."""
++        from tools.async_delegation import complete_event_delivery
++
++        with self._pending_lock:
++            pending = self._pending.get(session_id, {})
++            for receipt in ids:
++                item = pending.get(receipt)
++                if item is not None:
++                    complete_event_delivery(*item)
++                    pending.pop(receipt, None)
+ 
+     def turn_ended(self, conn: acp.Client, loop: asyncio.AbstractEventLoop) -> None:
+         """Start the pump on the first finished turn, then retry held events after each one."""
+         self._conn, self._loop = conn, loop
+         if self._thread is None:
++            from tools.async_delegation import restore_undelivered_completions
++            from tools.process_registry import process_registry
++
++            restore_undelivered_completions(process_registry.completion_queue)
+             self._thread = threading.Thread(target=self._run, daemon=True, name="acp-background-notifier")
+             self._thread.start()
+         self._turn_ended.set()
+@@ -203,8 +221,23 @@ class BackgroundNotifier:
+             text = claimed[0][1]
+             title = (async_delegation_display_text(first) if kind == "async_delegation"
+                      else heartbeat_display_text(first) if kind == "heartbeat" else text)
++        receipts = [str(event["delegation_id"]) for event, _text, claim in claimed
++                    if claim and event.get("delegation_id")]
++        # A successful notification write is not host admission. Keep durable results
++        # pending until a client-driven prompt persists them in the parent history.
++        with self._pending_lock:
++            pending = self._pending.setdefault(session_id, {})
++            for event, _text, claim in claimed:
++                if claim and event.get("delegation_id"):
++                    pending[str(event["delegation_id"])] = (event, claim)
+         sent = text is None or _notify(self._conn, self._loop, NOTIFICATION_METHOD, {
+             "sessionId": session_id, "kind": kind, "title": title, "text": text,
++            "notificationIds": receipts,
+         })
+         for event, _text, claim in claimed:
+-            (complete_event_delivery if sent else release_event_delivery)(event, claim)
++            if not sent:
++                with self._pending_lock:
++                    self._pending.get(session_id, {}).pop(str(event.get("delegation_id") or ""), None)
++                release_event_delivery(event, claim)
++            elif not claim or text is None:
++                complete_event_delivery(event, claim)
+diff --git a/acp_adapter/server.py b/acp_adapter/server.py
+index efe2802218..3a3d0732e0 100644
+--- a/acp_adapter/server.py
++++ b/acp_adapter/server.py
+@@ -257,6 +257,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+         self.session_manager = session_manager or SessionManager()
+         self._conn: Optional[acp.Client] = None
+         self._background = BackgroundNotifier(self.session_manager)
++        self._background_supported = False
+ 
+     # ---- Connection lifecycle -----------------------------------------------
+ 
+@@ -533,6 +534,8 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+     ) -> InitializeResponse:
+         from hermes_cli.version_info import get_version_info
+ 
++        meta = getattr(client_capabilities, "field_meta", None) or {}
++        self._background_supported = meta.get("hermes.backgroundNotifications") == 1
+         auth_methods = build_auth_methods()
+         logger.info(
+             "Initialize from %s (protocol v%s)", client_info.name if client_info else "unknown",
+@@ -604,12 +607,18 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+                 )
+         self._schedule_available_commands_update(state.session_id)
+         self._schedule_soon(lambda: self._send_usage_update(state))
++        if replay_verb and self._background_supported:
++            self._schedule_soon(lambda: self._resume_background())
+         return {
+             "models": self._build_model_state(state),
+             "modes": self._session_modes(state),
+             "field_meta": self._provenance_meta(state.session_id, getattr(state.agent, "session_id", state.session_id)),
+         }
+ 
++    async def _resume_background(self) -> None:
++        if self._conn is not None:
++            self._background.turn_ended(self._conn, asyncio.get_running_loop())
++
+     async def _attach_session_mcp(self, state: SessionState, mcp_servers: list | None, log: str, *log_args) -> None:
+         await self._register_session_mcp_servers(state, mcp_servers)
+         self._schedule_mcp_late_refresh(state)
+@@ -776,6 +785,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+ 
+                 tokens = set_session_vars(
+                     session_key=session_id, session_id=session_id, cwd=state.cwd, cron_session="",
++                    async_delivery=self._background_supported,
+                 )
+                 return lambda: clear_session_vars(tokens)
+ 
+@@ -882,7 +892,13 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+                 state.current_prompt_text = ""
+             return PromptResponse(stop_reason="end_turn")
+ 
+-        return await self._finish_turn(state, session_id, conn, result, pre_turn_hermes_id, cbs.streamed)
++        meta = kwargs.get("field_meta") or kwargs.get("_meta") or {}
++        receipts = meta.get("hermes.notificationIds", []) if isinstance(meta, dict) else []
++        if not isinstance(receipts, list) or not all(isinstance(receipt, str) for receipt in receipts):
++            receipts = []
++        return await self._finish_turn(
++            state, session_id, conn, result, pre_turn_hermes_id, cbs.streamed, receipts=receipts,
++        )
+ 
+     def _flush_turn_tool_calls(
+         self, cbs: _TurnCallbacks, session_id: str, conn: Any, loop: asyncio.AbstractEventLoop
+@@ -949,7 +965,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+ 
+     async def _finish_turn(
+         self, state: SessionState, session_id: str, conn: Any, result: dict, pre_turn_hermes_id: Any,
+-        streamed_message: bool,
++        streamed_message: bool, *, receipts: list[str] | None = None,
+     ) -> PromptResponse:
+         """Persist, emit provenance/final text, drain queued prompts, report usage."""
+         try:
+@@ -957,7 +973,12 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+             # only a result without the key leaves the history untouched.
+             if "messages" in result and isinstance(result["messages"], list):
+                 state.history = result["messages"]
+-                self.session_manager.save_session(session_id)
++                saved = (self.session_manager.save_session(session_id, verify_history=True)
++                         if receipts else self.session_manager.save_session(session_id))
++                if saved and receipts and not result.get("interrupted") and not (
++                    state.cancel_event and state.cancel_event.is_set()
++                ):
++                    self._background.acknowledge(session_id, receipts)
+ 
+             # Head rotated (compression split): emit provenance so clients can render the boundary.
+             post_turn_hermes_id = getattr(state.agent, "session_id", None)
+@@ -996,7 +1017,7 @@ class HermesACPAgent(SlashCommandsMixin, acp.Agent):
+                 state.is_running = False
+                 state.current_prompt_text = ""
+             await self._drain_queued_prompts(state, session_id, conn)
+-            if conn and (background := getattr(self, "_background", None)) is not None:
++            if getattr(self, "_background_supported", False) and conn and (background := getattr(self, "_background", None)) is not None:
+                 # Background work that finished during the turn is reported now it is idle.
+                 background.turn_ended(conn, asyncio.get_running_loop())
+ 
+diff --git a/acp_adapter/session.py b/acp_adapter/session.py
+index e5a868b0cc..5308f38a3f 100644
+--- a/acp_adapter/session.py
++++ b/acp_adapter/session.py
+@@ -265,13 +265,11 @@ class SessionManager:
+         self._schedule_git_metadata(state, self._claim_cwd_generation(state))
+         return state
+ 
+-    def save_session(self, session_id: str) -> None:
+-        """Persist a session; called by the server after prompt completion,
+-        history-mutating slash commands, and model switches."""
++    def save_session(self, session_id: str, *, verify_history: bool = False) -> bool:
++        """Persist a session; return False if the history could not be saved."""
+         with self._lock:
+             state = self._sessions.get(session_id)
+-        if state is not None:
+-            self._persist(state)
++        return self._persist(state, verify_history=verify_history) if state is not None else False
+ 
+     def end_all_sessions(self, end_reason: str = "acp_disconnect") -> int:
+         """Stamp ``ended_at`` on every live session (#118216).
+@@ -339,11 +337,11 @@ class SessionManager:
+                 logger.debug("ACP session cwd backfill failed", exc_info=True)
+         return self._db_instance
+ 
+-    def _persist(self, state: SessionState) -> None:
++    def _persist(self, state: SessionState, *, verify_history: bool = False) -> bool:
+         """Create/update the session record, then sync the live message set."""
+         db = self._get_db()
+         if db is None:
+-            return
++            return False
+ 
+         # Ensure model is a plain string (not a MagicMock or other proxy).
+         model_str = str(state.model) if state.model else None
+@@ -357,7 +355,7 @@ class SessionManager:
+             if db.get_session(state.session_id) is None:
+                 if not state.history:
+                     # Empty editor probes stay ephemeral; copied fork history persists.
+-                    return
++                    return False
+                 db.create_session(session_id=state.session_id, source="acp", model=model_str,
+                                   model_config=session_meta, cwd=state.cwd or None)
+             else:
+@@ -389,15 +387,26 @@ class SessionManager:
+             # #13675).
+             agent = state.agent
+             if getattr(agent, "_session_db", None) is db and getattr(agent, "_session_db_created", False):
+-                return
++                if verify_history:
++                    # Owning agents may suppress an incremental write error. Read back
++                    # the wake's user message before acknowledging its durable receipt.
++                    expected = next((m.get("content") for m in reversed(state.history)
++                                     if m.get("role") == "user"), None)
++                    persisted = db.get_messages_as_conversation(agent.session_id)
++                    actual = next((m.get("content") for m in reversed(persisted)
++                                   if m.get("role") == "user"), None)
++                    return expected is not None and expected == actual
++                return True
+             # A non-owning agent (model switch, /restore: fresh agent, _session_db_created=False)
+             # may still sit on archived rows, so replace ONLY the active=1 set: on a fresh
+             # create/fork every row is active (== full replace), and archived rows survive.
+             # Unconditional because an existence probe would fail OPEN on DB error and can
+             # race a concurrent archive_and_compact. Still rolls back on mid-rewrite failure.
+             db.replace_messages(state.session_id, state.history, active_only=True)
++            return True
+         except Exception:
+             logger.warning("Failed to persist ACP session %s", state.session_id, exc_info=True)
++            return False
+ 
+     def _claim_cwd_generation(self, state: SessionState) -> Optional[int]:
+         """Write the cwd column and return its new git-metadata generation.
+diff --git a/tests/acp_adapter/test_background_reports.py b/tests/acp_adapter/test_background_reports.py
+index 8115acf658..04f463322a 100644
+--- a/tests/acp_adapter/test_background_reports.py
++++ b/tests/acp_adapter/test_background_reports.py
+@@ -11,6 +11,62 @@ import pytest
+ from acp_adapter.background import NOTIFICATION_METHOD, PROCESS_METHOD, BackgroundNotifier, track_background_process
+ 
+ 
++@pytest.mark.asyncio
++@pytest.mark.parametrize("saved,interrupted,cancelled,has_messages,accepted", [
++    (True, False, False, True, True),
++    (False, False, False, True, False),
++    (True, True, False, True, False),
++    (True, False, True, True, False),
++    (True, False, False, False, False),
++])
++async def test_completion_receipt_requires_saved_uninterrupted_history(saved, interrupted, cancelled, has_messages, accepted):
++    from unittest.mock import AsyncMock, Mock
++    from acp_adapter.server import HermesACPAgent
++
++    server = HermesACPAgent.__new__(HermesACPAgent)
++    server.session_manager = Mock()
++    server.session_manager.save_session.return_value = saved
++    server._background = Mock()
++    server._drain_queued_prompts = AsyncMock()
++    server._send_usage_update = AsyncMock()
++    cancel = threading.Event()
++    if cancelled:
++        cancel.set()
++    state = SimpleNamespace(agent=SimpleNamespace(session_id="parent"), history=[], cancel_event=cancel,
++                            runtime_lock=threading.Lock(), is_running=True, current_prompt_text="wake")
++    result = {"interrupted": interrupted}
++    if has_messages:
++        result["messages"] = [{"role": "user", "content": "sentinel result"}]
++    await server._finish_turn(state, "parent", None, result, "parent", False, receipts=["receipt"])
++    if accepted:
++        server._background.acknowledge.assert_called_once_with("parent", ["receipt"])
++    else:
++        server._background.acknowledge.assert_not_called()
++
++
++@pytest.mark.parametrize("stored,accepted", [("sentinel result", True), ("earlier prompt", False), (None, False)])
++def test_owning_agent_receipt_checks_durable_user_message(tmp_path, stored, accepted):
++    from acp_adapter.session import SessionManager, SessionState
++    from hermes_state import SessionDB
++
++    db = SessionDB(tmp_path / "state.db")
++    try:
++        db.create_session(session_id="parent", source="acp")
++        if stored is not None:
++            db.replace_messages("parent", [{"role": "user", "content": stored}])
++        manager = SessionManager(db=db)
++        agent = SimpleNamespace(session_id="parent", _session_db=db, _session_db_created=True)
++        state = SessionState(session_id="parent", agent=agent, cwd="",
++                             history=[{"role": "user", "content": "sentinel result"}])
++        manager._sessions["parent"] = state
++        assert manager.save_session("parent", verify_history=True) is accepted
++        # Checking a receipt must not rewrite the owning agent's transcript.
++        history = db.get_messages_as_conversation("parent")
++        assert [m["content"] for m in history] == ([] if stored is None else [stored])
++    finally:
++        db.close()
++
++
+ class _Client:
+     """Records extension notifications on a real event loop thread."""
+ 
+@@ -75,7 +131,12 @@ def _completion(registry, session_key, *, proc_id="proc_aaaa1111", exit_code=1):
+ 
+ 
+ @pytest.mark.platforms("posix")
+-def test_background_terminal_reports_running_then_exit(client, registry, tmp_path):
++def test_background_terminal_reports_running_then_exit(client, registry, tmp_path, monkeypatch):
++    from tools.environments import local
++
++    # The installed interpreter may live under the real Hermes home. This fixture
++    # does not need its private command directory when spawning a disposable shell.
++    monkeypatch.setattr(local, "_HERMES_BIN_DIR", None)
+     proc = registry.spawn_local("exit 3", cwd=str(tmp_path), task_id="acp-1", session_key="acp-1")
+     result = json.dumps({"output": "Background process started", "session_id": proc.id, "pid": proc.pid})
+ 
+@@ -154,3 +215,36 @@ def test_completion_the_agent_already_read_is_not_resent(client, registry):
+     [(_method, params)] = client.wait_for(1)
+     assert "proc_fresh0002" in params["text"]
+     assert "proc_consumed1" not in params["text"]
++
++
++def test_delegation_notification_waits_for_owning_parent_receipt(client, registry, monkeypatch):
++    from tools import async_delegation
++
++    completed = []
++    monkeypatch.setattr(async_delegation, "claim_event_delivery", lambda event, consumer: "claim-1")
++    monkeypatch.setattr(async_delegation, "complete_event_delivery", lambda *args: completed.append(args))
++    notifier = BackgroundNotifier(_Sessions("acp-1", "acp-2"))
++    notifier._conn, notifier._loop = client, client.loop
++    event = {"type": "async_delegation", "delegation_id": "deleg-test", "task_count": 1}
++    notifier._send("acp-1", [(event, "child sentinel result")], registry)
++
++    assert client.wait_for(1)[0][1]["notificationIds"] == ["deleg-test"]
++    assert completed == []
++    notifier.acknowledge("acp-2", ["deleg-test"])
++    assert completed == []
++    notifier.acknowledge("acp-1", ["deleg-test"])
++    notifier.acknowledge("acp-1", ["deleg-test"])
++    assert completed == [(event, "claim-1")]
++
++
++@pytest.mark.asyncio
++async def test_background_delivery_requires_explicit_client_capability(monkeypatch):
++    from acp.schema import ClientCapabilities
++    from acp_adapter.server import HermesACPAgent
++
++    server = HermesACPAgent(session_manager=SimpleNamespace())
++    await server.initialize(protocol_version=1)
++    assert not server._background_supported
++    await server.initialize(protocol_version=1, client_capabilities=ClientCapabilities(
++        **{"_meta": {"hermes.backgroundNotifications": 1}}))
++    assert server._background_supported
+diff --git a/tests/tools/test_async_delegation.py b/tests/tools/test_async_delegation.py
+index 1125639f59..728c3e0e15 100644
+--- a/tests/tools/test_async_delegation.py
++++ b/tests/tools/test_async_delegation.py
+@@ -66,6 +66,32 @@ def _drain_for(delegation_id, timeout=5.0):
+     return None
+ 
+ 
++@pytest.mark.parametrize("previous,alive,reclaims", [
++    ("acp:12345:old", False, True),
++    ("acp:12345:old", True, False),
++    ("gateway:12345:old", False, False),
++    ("acp:invalid:old", False, False),
++])
++def test_acp_completion_claim_recovers_only_a_dead_acp_owner(tmp_path, monkeypatch, previous, alive, reclaims):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    monkeypatch.setattr(ad, "_owner_liveness", lambda: lambda pid, birth: alive)
++    result = ad.dispatch_async_delegation(
++        goal="receipt recovery", context=None, toolsets=None, role="leaf", model="fixture",
++        session_key="receipt-parent", parent_session_id="receipt-parent", runner=lambda: {"summary": "sentinel"},
++    )
++    delegation_id = result["delegation_id"]
++    event = _drain_for(delegation_id)
++    assert event is not None
++    assert ad.claim_completion_delivery(delegation_id, previous)
++    assert ad.claim_completion_delivery(delegation_id, "acp:54321:new") is reclaims
++    with sqlite3.connect(tmp_path / "state.db") as conn:
++        assert conn.execute("SELECT delivery_claim, delivery_state FROM async_delegations WHERE delegation_id=?",
++                            (delegation_id,)).fetchone() == ("acp:54321:new" if reclaims else previous, "pending")
++    assert not ad.complete_completion_delivery(delegation_id, "wrong-owner")
++    assert ad.complete_completion_delivery(delegation_id, "acp:54321:new" if reclaims else previous)
++    assert not ad.claim_completion_delivery(delegation_id, "acp:54321:duplicate")
++
++
+ def test_schema_init_preserves_shared_state_db_journal_mode(tmp_path):
+     """The delegation ledger is a guest in state.db, not its mode owner."""
+     conn = sqlite3.connect(tmp_path / "state.db")
+diff --git a/tools/async_delegation.py b/tools/async_delegation.py
+index 1ed302d0fd..2b905c4b82 100644
+--- a/tools/async_delegation.py
++++ b/tools/async_delegation.py
+@@ -440,9 +440,17 @@ def claim_completion_delivery(delegation_id: str, claim_id: str) -> bool:
+     now = time.time()
+     with _DB_LOCK, _transaction() as conn:
+         row = conn.execute(
+-            "SELECT delivery_state FROM async_delegations WHERE delegation_id=?", (delegation_id,)).fetchone()
++            "SELECT delivery_state, delivery_claim FROM async_delegations WHERE delegation_id=?", (delegation_id,)).fetchone()
+         if row is None:
+             return True  # legacy event created before durable dispatch
++        previous_claim = str(row[1] or "")
++        if previous_claim.startswith("acp:"):
++            alive = _owner_liveness()
++            parts = previous_claim.split(":")
++            if alive is not None and len(parts) == 3 and parts[1].isdigit() and not alive(int(parts[1]), None):
++                conn.execute("""UPDATE async_delegations SET delivery_claim=NULL, delivery_claimed_at=NULL
++                    WHERE delegation_id=? AND delivery_claim=? AND delivery_state='pending'""",
++                    (delegation_id, previous_claim))
+         cur = conn.execute("""UPDATE async_delegations SET delivery_claim=?, delivery_claimed_at=?,
+                       delivery_attempts=delivery_attempts+1, updated_at=?
+                WHERE delegation_id=? AND delivery_state='pending'

@@ -46,12 +46,20 @@ function finishHermesProcess(notify: boolean) {
     reason: "exited",
   });
   if (notify) {
-    writeJsonRpcNotification("_hermes/notification", {
+    const notification = {
       sessionId: finished.sessionId,
       kind: "completion",
+      ...(process.env.T3_ACP_HERMES_NOTIFICATION_ID
+        ? { notificationIds: [process.env.T3_ACP_HERMES_NOTIFICATION_ID] }
+        : {}),
       title: "Background Process Failed (exit 1): gh pr checks 94 --watch echo done",
       text: "[IMPORTANT: Background process proc_ci000001 exited (exit code 1).\nCommand: gh pr checks 94 --watch\nOutput:\nX  Test Server 1]",
-    });
+    };
+    writeJsonRpcNotification("_hermes/notification", notification);
+    if (process.env.T3_ACP_HERMES_REPEAT_NOTIFICATION === "1") {
+      setTimeout(() => writeJsonRpcNotification("_hermes/notification", notification), 50);
+      setTimeout(() => writeJsonRpcNotification("_hermes/notification", notification), 100);
+    }
   }
 }
 const hermesDelegation = process.env.T3_ACP_HERMES_DELEGATION;

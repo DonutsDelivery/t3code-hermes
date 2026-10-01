@@ -64,7 +64,7 @@ overlapping delegations can have identical goals and batch-local indices, and un
 ownership is dropped. Registry-forced stalls and worker crashes report through the same child relay,
 so detached work cannot stay falsely active. A parent result with `status: "dispatched"` only
 acknowledges launch; child lifecycle events settle each subagent. The original ACP process must stay
-connected; missed results are not recovered from disk.
+connected unless `0006` is also applied, which restores pending results from disk.
 
 Verified against hermes-agent `ac0cfa7db9` (`main`, 2026-09-29), together with `0002`. It does not
 apply to `08b140d14e` or older checkouts; update first.
@@ -113,6 +113,32 @@ in Hermes's `config.yaml` still suppresses process notifications; process status
 
 The patch's `tests/acp_adapter/test_background_reports.py` spawns real processes against an isolated
 process registry. Run it with the rest of `tests/acp_adapter/` in a scratch checkout, as for `0003`.
+
+## `0006-acp-durable-completion-receipts.patch`
+
+Apply after `0003` and `0004`. Verified against hermes-agent `4d3555e5ca` with both
+patches applied. This extends their transport without changing ACP's client-driven turns.
+
+T3 advertises `_meta["hermes.backgroundNotifications"] = 1` during initialization.
+Hermes keeps clients without this capability on synchronous delegation. Capable clients
+receive stable `notificationIds` with detached completions and return them in
+`session/prompt` metadata under `hermes.notificationIds`. Hermes settles a receipt only
+for its owning session after successful, uninterrupted history persistence. Sending a
+notification alone does not consume the child result.
+
+Reconnect restores durable pending completions. A previous ACP delivery claim is
+reclaimed only when its process is demonstrably dead. Live claims, non-ACP claims and
+malformed process identities remain untouched. Failed notification writes release the
+claim for retry. T3 retains receipt IDs while queued, during the wake and after it
+finishes, so repeated notices do not create repeated continuation turns. Stop holds
+queued wakes until the user's next message.
+
+Run `tests/acp_adapter/test_background_reports.py` and
+`tests/tools/test_async_delegation.py` in the isolated Hermes checkout. The T3 adapter
+regressions cover receipt metadata, duplicate notices and Stop. The isolated browser
+acceptance uses a no-provider sentinel fixture through the real ACP server and T3 UI.
+It shows the child Working, then Completed, and a separate automatic parent reply.
+This does not verify a paid provider's model routing or activate a running installation.
 
 ## `0005-gateway-multiplex-webhook-session-close.patch`
 

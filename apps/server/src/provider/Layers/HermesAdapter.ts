@@ -149,7 +149,8 @@ interface HermesSessionContext {
   /** Background processes the patched Hermes reports; see HermesBackground.ts. */
   readonly backgroundProcesses: HermesBackgroundProcesses;
   /** Background-work notices Hermes sent, waiting to wake the agent once idle. */
-  pendingWakes: Array<string>;
+  pendingWakes: Array<{ text: string; notificationIds: ReadonlyArray<string> }>;
+  readonly seenWakeIds: Set<string>;
   /** Stop holds wakes until the user's next turn, as Hermes's own TUI does. */
   wakesHeld: boolean;
   turns: Array<{ id: TurnId; items: Array<unknown> }>;
@@ -977,7 +978,19 @@ export function makeHermesAdapter(
                     yield* logNative(input.threadId, HERMES_NOTIFICATION_METHOD, notice);
                     const ctx = sessions.get(input.threadId);
                     if (!ctx || ctx.stopped || ctx.acpSessionId !== notice.sessionId) return;
-                    ctx.pendingWakes.push(notice.text);
+                    const notificationIds = notice.notificationIds ?? [];
+                    if (
+                      notificationIds.length === 0 ||
+                      !notificationIds.every((id) => ctx.seenWakeIds.has(id))
+                    ) {
+                      for (const id of notificationIds) ctx.seenWakeIds.add(id);
+                      // Retain recent receipts after draining, including while the wake runs.
+                      while (ctx.seenWakeIds.size > 1024) {
+                        const oldest = ctx.seenWakeIds.values().next().value;
+                        if (oldest !== undefined) ctx.seenWakeIds.delete(oldest);
+                      }
+                      ctx.pendingWakes.push({ text: notice.text, notificationIds });
+                    }
                     yield* wakeWhenIdle(input.threadId);
                   }),
                 ),
@@ -1062,6 +1075,7 @@ export function makeHermesAdapter(
             delegations: new HermesDelegations(),
             backgroundProcesses: new HermesBackgroundProcesses(),
             pendingWakes: [],
+            seenWakeIds: new Set(),
             wakesHeld: false,
             promptsInFlight: 0,
             firstPromptDispatched: undefined,
@@ -1308,7 +1322,11 @@ export function makeHermesAdapter(
      * One prompt. A user turn releases wakes held by Stop; a wake turn prompts
      * with Hermes's background-work notices and has no user message of its own.
      */
-    const runTurn = (input: ProviderSendTurnInput, origin: "user" | "wake") =>
+    const runTurn = (
+      input: ProviderSendTurnInput,
+      origin: "user" | "wake",
+      notificationIds: ReadonlyArray<string> = [],
+    ) =>
       Effect.gen(function* () {
         const prepared = yield* withThreadLock(
           input.threadId,
@@ -1535,6 +1553,9 @@ export function makeHermesAdapter(
             : prepared.acp.prompt(
                 {
                   // ACP has no system-message field; keep runtime context separate from user input.
+                  ...(notificationIds.length > 0
+                    ? { _meta: { "hermes.notificationIds": notificationIds } }
+                    : {}),
                   prompt: [
                     ...prepared.promptParts,
                     {
@@ -1786,8 +1807,16 @@ export function makeHermesAdapter(
         ) {
           return Effect.void;
         }
-        const notices = ctx.pendingWakes.splice(0).join("\n\n");
-        return runTurn({ threadId, input: notices }, "wake").pipe(
+        const wakes = ctx.pendingWakes.splice(0);
+        const notices = wakes.map((wake) => wake.text).join("\n\n");
+        const notificationIds = wakes.flatMap((wake) => [...wake.notificationIds]);
+        return runTurn({ threadId, input: notices }, "wake", notificationIds).pipe(
+          Effect.tapCause(() =>
+            Effect.sync(() => {
+              ctx.pendingWakes.unshift(...wakes);
+              ctx.wakesHeld = true;
+            }),
+          ),
           Effect.catchCause((cause) =>
             Effect.logWarning("Hermes background wake failed.", { cause, threadId }),
           ),

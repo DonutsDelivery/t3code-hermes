@@ -55,6 +55,13 @@ export const HERMES_PATCHES: ReadonlyArray<HermesPatchDefinition> = [
       "Multi-profile gateways, so webhook runs in a profile are marked finished. Without it, T3 Code shows those runs as failed after two hours.",
     content: bundledPatch("0005-gateway-multiplex-webhook-session-close.patch"),
   },
+  {
+    id: HermesPatchId.make("acp-durable-completion-receipts"),
+    title: "Durable subagent completion receipts",
+    neededFor:
+      "Apply after Live subagent progress and Background process reports. Keeps child results pending until the parent saves them, and recovers undelivered results after ACP reconnects.",
+    content: bundledPatch("0006-acp-durable-completion-receipts.patch"),
+  },
 ];
 
 /**

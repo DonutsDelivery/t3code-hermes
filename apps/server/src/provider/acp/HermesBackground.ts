@@ -38,6 +38,7 @@ export const HermesNotification = Schema.Struct({
   kind: Schema.String,
   title: Schema.optional(Schema.NullOr(Schema.String)),
   text: Schema.String,
+  notificationIds: Schema.optional(Schema.Array(Schema.String)),
 });
 export type HermesNotification = typeof HermesNotification.Type;
 
