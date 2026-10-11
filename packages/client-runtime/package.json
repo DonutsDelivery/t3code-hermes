@@ -415,6 +415,10 @@
       "types": "./src/state/hermesMemory.ts",
       "default": "./src/state/hermesMemory.ts"
     },
+    "./diff-count": {
+      "types": "./src/diffCount.ts",
+      "default": "./src/diffCount.ts"
+    },
     "./mcp-apps": {
       "types": "./src/mcpApps/host.ts",
       "default": "./src/mcpApps/host.ts"

@@ -31,6 +31,7 @@ const DRIVER_LABEL: Partial<Record<string, string>> = {
   codex: "Codex",
   claudeAgent: "Claude",
   opencode: "OpenCode",
+  antigravity: "Antigravity",
 };
 const PACE_LABEL = { ahead: "Ahead of pace", on: "On pace", under: "Under pace" } as const;
 
@@ -273,7 +274,9 @@ export function UsageLimitsSection({
                         ? colors.claude
                         : pool.driver === "opencode"
                           ? colors.opencode
-                          : colors.codex
+                          : pool.driver === "antigravity"
+                            ? colors.antigravity
+                            : colors.codex
                     }
                     now={now}
                     environmentIds={
