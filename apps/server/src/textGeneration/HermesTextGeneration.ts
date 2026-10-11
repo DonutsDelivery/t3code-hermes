@@ -23,6 +23,7 @@ import {
   sanitizePrTitle,
   sanitizeThreadTitle,
 } from "@t3tools/provider-core/server/textGenerationUtils";
+import { investigationUnsupported } from "@t3tools/provider-core/server/textGenerationOperations";
 import {
   applyHermesAcpModelSelection,
   currentHermesModelIdFromSessionSetup,
@@ -251,10 +252,16 @@ export const makeHermesTextGeneration = Effect.fn("makeHermesTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  // Hermes ACP sessions have no read-only tool mode, so an investigation could change the
+  // checkout; refuse instead of answering blind, as Cursor and Grok do.
+  const generateReviewGuide: TextGeneration.TextGeneration["Service"]["generateReviewGuide"] = () =>
+    Effect.fail(investigationUnsupported("generateReviewGuide", "Hermes"));
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateReviewGuide,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
