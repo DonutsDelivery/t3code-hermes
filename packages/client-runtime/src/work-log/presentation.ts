@@ -631,6 +631,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "thread-create":
     case "thread-send":
     case "thread-interrupt":
+    case "workflow-stop":
     case "schedule-create":
     case "schedule-update":
     case "schedule-delete":
