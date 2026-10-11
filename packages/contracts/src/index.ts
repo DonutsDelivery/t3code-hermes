@@ -39,6 +39,7 @@ export * from "./hermesPatches.ts";
 export * from "./hindsight.ts";
 export * from "./projectClone.ts";
 export * from "./pullRequest.ts";
+export * from "./pullRequestReviewGuide.ts";
 export * from "./orchestrationDispatch.ts";
 export * from "./orchestrationProject.ts";
 export * from "./orchestrationV2.ts";
