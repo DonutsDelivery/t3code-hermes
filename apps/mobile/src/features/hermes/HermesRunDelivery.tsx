@@ -8,10 +8,7 @@ import { resolveNativeMarkdownTypography } from "../../lib/appearancePreferences
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useFontFamily } from "../../lib/useFontFamily";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import {
-  hasNativeSelectableMarkdownText,
-  SelectableMarkdownText,
-} from "../../native/SelectableMarkdownText";
+import { SelectableMarkdownText } from "../../native/SelectableMarkdownText";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -199,15 +196,11 @@ function RunOutputMarkdown({ content }: { readonly content: string }) {
     [appearance.baseFontSize, boldFontFamily, fontFamily, theme],
   );
 
-  return hasNativeSelectableMarkdownText() ? (
+  return (
     <SelectableMarkdownText
       markdown={content}
       textStyle={textStyle}
       onLinkPress={(href) => void tryOpenExternalUrl(href, "markdown-link")}
     />
-  ) : (
-    <Text className="text-sm text-foreground" selectable>
-      {content}
-    </Text>
   );
 }
