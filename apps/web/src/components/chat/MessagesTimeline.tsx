@@ -3054,6 +3054,7 @@ function HtmlRenderTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "htm
         key={row.htmlRender.attachmentId}
         environmentId={ctx.activeThreadEnvironmentId}
         htmlRender={row.htmlRender}
+        threadRef={ctx.threadRef ?? undefined}
         onOpen={ctx.onFileOpen}
       />
     </div>
