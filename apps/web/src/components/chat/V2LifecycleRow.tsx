@@ -14,7 +14,7 @@ import {
   type HandoffEndpoints,
   type HandoffTimelineRun,
 } from "@t3tools/client-runtime/handoff";
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
   ProviderDriverKind,
@@ -566,18 +566,21 @@ export function HandoffRow(props: {
       detail={
         <span className="inline-flex min-w-0 flex-wrap items-center justify-center gap-1.5">
           {fromEndpoints.map((endpoint, index) => (
-            <Fragment key={`${endpoint.instanceId}:${endpoint.model ?? ""}`}>
-              {index > 0 ? (
-                <span aria-hidden="true" className="-ml-1">
-                  ,
-                </span>
-              ) : null}
+            <span
+              key={`${endpoint.instanceId}:${endpoint.model ?? ""}`}
+              className="inline-flex min-w-0 items-center"
+            >
               <HandoffEndpoint
                 providers={props.providers}
                 instanceId={endpoint.instanceId}
                 model={endpoint.model}
               />
-            </Fragment>
+              {index < fromEndpoints.length - 1 ? (
+                <span aria-hidden="true" className="ml-0.5">
+                  ,
+                </span>
+              ) : null}
+            </span>
           ))}
           {fromEndpoints.length > 0 ? (
             <ArrowRightIcon aria-hidden="true" className="size-3 shrink-0" />
