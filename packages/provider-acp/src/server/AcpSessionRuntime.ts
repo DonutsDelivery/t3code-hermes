@@ -157,6 +157,12 @@ export interface AcpSessionRuntimeOptions {
   readonly onTermination?: (error: EffectAcpErrors.AcpError) => Effect.Effect<void>;
   readonly onOutgoingResponseFailure?: EffectAcpClient.AcpClientOptions["onOutgoingResponseFailure"];
   readonly onOutgoingResponse?: EffectAcpClient.AcpClientOptions["onOutgoingResponse"];
+  /**
+   * Model ids the user configured for this instance. The model config option
+   * accepts them even when the agent does not advertise them, and the agent
+   * validates them instead.
+   */
+  readonly customModels?: ReadonlyArray<string>;
 }
 
 export interface AcpSessionRequestLogEvent {
@@ -1987,6 +1993,9 @@ export const make = (
         }
         const allowedValues = collectSessionConfigOptionValues(configOption);
         if (allowedValues.includes(value)) {
+          return;
+        }
+        if (configOption.category === "model" && options.customModels?.includes(value)) {
           return;
         }
         return yield* new EffectAcpErrors.AcpRequestError({
