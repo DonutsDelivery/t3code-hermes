@@ -15,7 +15,7 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Hermes (Dev)" : "T3 Hermes (Alpha)";
+const APP_DISPLAY_NAME = isDevelopment ? "T3 Hermes (Dev)" : "T3 Hermes (Beta)";
 const APP_BUNDLE_ID = isDevelopment
   ? `com.nateweav.t3hermes.dev.${devBundleIdSuffix || "local"}`
   : "com.nateweav.t3hermes";
