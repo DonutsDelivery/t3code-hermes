@@ -160,9 +160,9 @@ describe("HermesPatchService", () => {
       );
       // The gateway started before a patch rewrote a file it imports.
       NodeFS.utimesSync(gateway.pidFile, 1_000, 1_000);
-      NodeFS.mkdirSync(NodePath.join(root, "gateway", "platforms"), { recursive: true });
-      NodeFS.writeFileSync(NodePath.join(root, "gateway", "platforms", "webhook.py"), "");
-      NodeFS.utimesSync(NodePath.join(root, "gateway", "platforms", "webhook.py"), 2_000, 2_000);
+      NodeFS.mkdirSync(NodePath.join(root, "gateway"), { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(root, "gateway", "run.py"), "");
+      NodeFS.utimesSync(NodePath.join(root, "gateway", "run.py"), 2_000, 2_000);
 
       yield* Effect.gen(function* () {
         const service = yield* HermesPatchService;

@@ -57,18 +57,6 @@
       ]
     },
     {
-      "id": "gateway-multiplex-webhook-session-close",
-      "title": "Finished webhook runs in profiles",
-      "neededFor": "Multi-profile gateways, so webhook runs in a profile are marked finished. Without it, T3 Code shows those runs as failed after two hours.",
-      "versions": [
-        {
-          "hermesCommit": "5a8dea85fbb636ae09adafa2272d511ae1e227a3",
-          "hermesCommitDate": "2026-10-01T19:37:31Z",
-          "file": "gateway-multiplex-webhook-session-close/5a8dea85fbb6.patch"
-        }
-      ]
-    },
-    {
       "id": "acp-fast-mode",
       "title": "Fast mode",
       "neededFor": "Fast Mode on Hermes models. Applying it also turns fast mode on for CLIProxyAPI endpoints in your Hermes config. Without it, the Fast Mode toggle does not appear.",
@@ -85,6 +73,11 @@
       "title": "Durable background results",
       "neededFor": "Apply after Live subagent progress and Background process reports. Keeps a finished subagent's result until the agent has actually been woken with it, and redelivers results missed while T3 Code was disconnected or restarting.",
       "versions": [
+        {
+          "hermesCommit": "5575a0859d6278bfcef79c28189a24594952efd3",
+          "hermesCommitDate": "2026-10-14T22:19:38Z",
+          "file": "acp-durable-completion-receipts/5575a0859d62.patch"
+        },
         {
           "hermesCommit": "af8839df1038cc026075fb254afa22edc19d911d",
           "hermesCommitDate": "2026-10-04T22:20:18Z",
