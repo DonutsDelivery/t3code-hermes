@@ -141,22 +141,6 @@ in Hermes's `config.yaml` still suppresses process notifications; process status
 The patch's `tests/acp_adapter/test_background_reports.py` spawns real processes against an isolated
 process registry. Run it with the rest of `tests/acp_adapter/` in a scratch checkout, as for `acp-delegation-progress`.
 
-## `gateway-multiplex-webhook-session-close`
-
-**Needed by:** gateways with `gateway.multiplex_profiles: true` that serve webhook routes for a
-named profile (`/p/<profile>/webhooks/...`). Without it, those runs never get `ended_at`, so T3
-Code reports them as failed once its two-hour staleness window passes, and Hermes's
-`prune_sessions` never reaps the rows.
-
-The run writes its session row to `profiles/<profile>/state.db`, but the webhook adapter's
-completion hook runs outside the profile scope and ended the session in the launch home's
-`state.db`, which has no such row. The patch closes it in the store `SessionStore._db_for_key`
-resolves from the session key. Single-profile gateways and default-profile keys are unchanged.
-Restart the gateway with `hermes gateway restart` after applying it.
-
-The patch's test in `tests/gateway/test_webhook_session_close.py` runs a profile webhook delivery
-through the real adapter pipeline on a multiplexed store.
-
 ## `acp-fast-mode`
 
 **Needed by:** the Fast Mode toggle for Hermes models. Stock Hermes applies `/fast` only in its CLI,
@@ -209,7 +193,8 @@ demonstrably dead. A sent receipt is not re-sent within one Hermes process, only
 reconnect. T3 Code drops a re-sent notice while its ids are queued or prompting and reopens them once
 the wake prompt settles, because its stop reason does not say whether Hermes settled them.
 
-Verified against hermes-agent `4d3555e5ca` and `af8839df10` (`main`, 2026-10-04) after
+Verified against hermes-agent `4d3555e5ca`, `af8839df10` (`main`, 2026-10-04), and `5575a0859d`
+(2026-10-14) after
 `acp-delegation-progress` and `acp-background-reports`, with or without `acp-fast-mode` in either
 order. It edits `acp_adapter/background.py`, which `acp-background-reports` creates, so it applies
 only on top of the patches before it, never to stock Hermes alone.
