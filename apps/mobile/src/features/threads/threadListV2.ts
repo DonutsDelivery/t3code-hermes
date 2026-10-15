@@ -150,11 +150,17 @@ export function resolveThreadListV2SwipeActions(input: {
 export function resolveThreadListV2SnoozeGateExpiryMs(
   thread: Pick<
     EnvironmentThreadShell,
-    "hasPendingApprovals" | "hasPendingUserInput" | "latestRun" | "latestUserMessageAt" | "runtime"
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "latestRun"
+    | "latestUserMessageAt"
+    | "runtime"
   >,
   options: { readonly now: string },
 ): number | null {
   if (thread.hasPendingApprovals || thread.hasPendingUserInput) return null;
+  if (thread.pendingSubagentRequest != null) return null;
   if (!hasQueuedTurnStart(thread, options)) return null;
   const messageAtMs = Date.parse(thread.latestUserMessageAt ?? "");
   if (Number.isNaN(messageAtMs)) return null;
@@ -194,6 +200,7 @@ export function resolveThreadListV2Status(
     | "hasActionableProposedPlan"
     | "hasPendingApprovals"
     | "hasPendingUserInput"
+    | "pendingSubagentRequest"
     | "interactionMode"
     | "pendingBackgroundTasks"
     | "pullRequests"
@@ -202,10 +209,10 @@ export function resolveThreadListV2Status(
     | "settledOverride"
   >,
 ): ThreadListV2Status {
-  if (thread.hasPendingApprovals) {
+  if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
     return "approval";
   }
-  if (thread.hasPendingUserInput) {
+  if (thread.hasPendingUserInput || thread.pendingSubagentRequest === "user_input") {
     return "input";
   }
   if (
