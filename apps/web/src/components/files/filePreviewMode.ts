@@ -1,4 +1,5 @@
 import type { AssetResource, ProjectReadFileError, ScopedThreadRef } from "@t3tools/contracts";
+import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import { isAbsolutePath, workspaceRelativeFilePath } from "@t3tools/shared/path";
 
 export function resolveFilePreviewPath(path: string | null, cwd: string): string | null {
@@ -53,6 +54,16 @@ export function setMarkdownTaskChecked(
   }
 
   return `${markdown.slice(0, markerOffset + 1)}${checked ? "x" : " "}${markdown.slice(markerOffset + 2)}`;
+}
+
+/** A workspace-file asset is confined to the workspace; anything outside it is served as a host media file. */
+export function previewAssetKind(
+  absolutePath: string,
+  workspaceRoot: string,
+): "workspace-file" | "media-file" {
+  return mediaFileReference(absolutePath, workspaceRoot).relativePath === undefined
+    ? "media-file"
+    : "workspace-file";
 }
 
 export function workspaceAssetResource(input: {

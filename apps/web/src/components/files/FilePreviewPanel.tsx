@@ -104,6 +104,7 @@ import { projectFileCacheKey } from "./fileContentRevision";
 import {
   filePreviewReadErrorMessage,
   isMarkdownPreviewFile,
+  previewAssetKind,
   resolveFilePreviewPath,
   setMarkdownTaskChecked,
   shouldShowFileExplorer,
@@ -161,7 +162,7 @@ function WorkspaceImagePreview(props: {
   const resource = useMemo(
     () =>
       workspaceAssetResource({
-        kind: "workspace-file",
+        kind: previewAssetKind(props.absolutePath, props.workspaceRoot),
         threadRef: props.threadRef,
         draft: props.draft,
         workspaceRoot: props.workspaceRoot,
@@ -226,18 +227,16 @@ function WorkspaceBrowserPreview(props: {
   readonly title: string;
   readonly workspaceMutationId: string | null;
 }) {
-  const insideWorkspace =
-    mediaFileReference(props.absolutePath, props.workspaceRoot).relativePath !== undefined;
   const resource = useMemo(
     () =>
       workspaceAssetResource({
-        kind: insideWorkspace ? "workspace-file" : "media-file",
+        kind: previewAssetKind(props.absolutePath, props.workspaceRoot),
         threadRef: props.threadRef,
         draft: props.draft,
         workspaceRoot: props.workspaceRoot,
         absolutePath: props.absolutePath,
       }),
-    [insideWorkspace, props.threadRef, props.draft, props.workspaceRoot, props.absolutePath],
+    [props.threadRef, props.draft, props.workspaceRoot, props.absolutePath],
   );
   const assetUrl = useAssetUrlState(props.environmentId, resource);
   const revisionSuffix =

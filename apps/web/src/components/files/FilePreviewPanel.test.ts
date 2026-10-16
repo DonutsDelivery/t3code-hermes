@@ -11,6 +11,7 @@ import {
 import {
   filePreviewReadErrorMessage,
   isMarkdownPreviewFile,
+  previewAssetKind,
   resolveFilePreviewPath,
   setMarkdownTaskChecked,
   shouldShowFileExplorer,
@@ -189,6 +190,18 @@ describe("resolveFilePreviewPath", () => {
         shouldShowFileExplorer({ relativePath, explorerOpen: false, attachmentOpen: false }),
       ).toBe(true);
     }
+  });
+});
+
+describe("previewAssetKind", () => {
+  it.each([
+    ["/repo/assets/logo.png", "workspace-file"],
+    ["/repo/nested/deep/a.gif", "workspace-file"],
+    ["/home/me/previews/a.gif", "media-file"],
+    ["/repo-sibling/a.png", "media-file"],
+    ["/repo", "media-file"],
+  ] as const)("serves %j as %s", (path, kind) => {
+    expect(previewAssetKind(path, "/repo")).toBe(kind);
   });
 });
 
