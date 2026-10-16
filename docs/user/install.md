@@ -36,6 +36,9 @@ If `t3-hermes` or `t3-hermes start` reports an already running server, connect
 to that server instead. Stop it before starting a replacement, or use a
 different `--base-dir` for an independent server.
 
+To return freed database space to disk, run `npx t3-hermes@nightly doctor`
+(see [Reclaim database space](./background-service.md#reclaim-database-space)).
+
 The executable is built for Apple Silicon Macs, Linux, and Windows. There is
 no Intel Mac build of it, because Node cannot produce a single executable for
 that platform; the Intel desktop app is unaffected. To run a standalone server

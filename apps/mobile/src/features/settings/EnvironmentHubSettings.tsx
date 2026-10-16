@@ -2,7 +2,7 @@ import { type ServerSettingsPatch, UsageLimitSourceId } from "@t3tools/contracts
 import { useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 
-import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/ui/AppText";
 import { type EnvironmentPresentation, useEnvironments } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";

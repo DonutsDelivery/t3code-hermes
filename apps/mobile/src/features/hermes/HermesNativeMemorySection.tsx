@@ -14,7 +14,7 @@ import type {
 import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { useHermesMemory } from "../../state/hermesMemory";
 
 type MemoryChange =
