@@ -694,6 +694,9 @@ export const layer: Layer.Layer<
           case "output.measured":
             // Live throughput only; RunExecutionService consumes it before ingestion.
             return [];
+          case "command_output.delta":
+            // Live output is routed to the command output hub before ingestion.
+            return [];
           case "turn.terminal":
             const dismissed = yield* dismissNativeUserInputs(input, input.event.providerTurnId);
             if (input.event.status !== "failed") {
