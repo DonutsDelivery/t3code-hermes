@@ -369,7 +369,6 @@ const main = Command.make(
               message: `Expected one Xcode workspace in ${ios}, found ${workspaces.length}.`,
             });
           const project = path.basename(workspace, ".xcworkspace");
-          // Target this simulator only, without Expo's desktop activation or log streaming.
           yield* command(
             "xcrun",
             [

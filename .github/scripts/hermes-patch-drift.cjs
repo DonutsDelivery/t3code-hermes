@@ -196,7 +196,6 @@ function formatReport({ hermesSha, results, runUrl }) {
   return `${lines.join("\n")}\n`;
 }
 
-// ---------------------------------------------------------------------------
 // I/O below; the pure functions above are covered by hermes-patch-drift.test.cjs.
 
 function git(cwd, args, env = {}) {

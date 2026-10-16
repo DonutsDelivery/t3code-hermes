@@ -5,9 +5,8 @@ release_version="${1:?release version is required}"
 release_dist_tag="${2:?npm dist-tag is required}"
 export npm_config_registry=https://registry.npmjs.org
 
-# npm makes a publish visible asynchronously. The small launcher shows up
-# within a minute or two, but the ~60 MB platform packages routinely take
-# several minutes, even though they are published first.
+# npm makes a publish visible asynchronously; the launcher usually shows up
+# within a minute or two.
 wait_attempts=90
 wait_seconds=10
 
@@ -24,25 +23,9 @@ if [[ "$published_version" != "$release_version" ]]; then
   exit 1
 fi
 
-# The platform package is an optional dependency, so npm silently skips it
-# while it is not visible yet and the launcher then reports the platform as
-# unsupported. Wait for this runner's package before installing.
-platform_package="$(node --input-type=module -e 'const { npmPlatformPackageName } = await import("./scripts/build-npm-platform-packages.ts"); console.log(npmPlatformPackageName(process.platform + "-" + process.arch));')"
-platform_version=""
-for attempt in $(seq 1 "$wait_attempts"); do
-  platform_version="$(npm view "${platform_package}@${release_version}" version 2>/dev/null || true)"
-  if [[ "$platform_version" == "$release_version" ]]; then
-    break
-  fi
-  echo "Waiting for ${platform_package}@${release_version} (attempt ${attempt}/${wait_attempts})." >&2
-  sleep "$wait_seconds"
-done
-if [[ "$platform_version" != "$release_version" ]]; then
-  echo "::error::${platform_package}@${release_version} is not visible on npm." >&2
-  exit 1
-fi
-
 # Avoid the checkout's binaries, npm cache, and user state masking a broken package.
+# The launcher downloads this version's CLI archive from the GitHub Release,
+# which publish_cli only runs after.
 smoke_dir="$(mktemp -d)"
 trap 'rm -rf "$smoke_dir"' EXIT
 cd "$smoke_dir"
