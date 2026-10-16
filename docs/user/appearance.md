@@ -36,6 +36,12 @@ The main sidebar, right panel, and terminal drawer open and close immediately by
 in your operating system. Moving between threads always snaps to the selected thread's panel state
 without replaying its transitions.
 
+Turn on **Tab status dots** to mark the browser tab with a colored dot instead of a count while
+threads wait in the background: green when a turn finishes, amber when one needs your input or
+approval, and red when one fails. Amber and red blink a few times when they arrive, then stay solid;
+reduced motion keeps the dot still. It is off by default, saved per browser, and the desktop app
+keeps its dock and taskbar badge.
+
 ## Behind the scenes
 
 Turn these on in **Settings → Appearance → Behind the scenes** to see more of how an agent works.

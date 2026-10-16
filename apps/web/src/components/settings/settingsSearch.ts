@@ -257,6 +257,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["animation motion outline sidebar indicator"],
   },
   {
+    id: "tab-status-dots",
+    title: "Tab status dots",
+    to: "/settings/appearance",
+    searchTerms: ["favicon badge blink notification indicator color"],
+  },
+  {
     id: "skill-activity-rows",
     title: "Skill activity",
     to: "/settings/appearance",

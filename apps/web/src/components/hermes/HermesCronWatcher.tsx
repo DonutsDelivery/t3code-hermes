@@ -1,12 +1,14 @@
 /** Shares the notification coordinator's badge and audio ownership across all Hermes hosts. */
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import type { OnAttention } from "../ThreadNotificationCoordinator";
+
 import { useHermesEnvironmentEnabled } from "../../state/hermesCron";
 import { useHermesCronNotifications } from "./useHermesCronNotifications";
 
 export interface HermesCronWatcherProps {
   readonly environmentId: EnvironmentId;
-  readonly onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
+  readonly onAttention: OnAttention;
 }
 
 function EnabledHermesCronWatcher(props: HermesCronWatcherProps) {

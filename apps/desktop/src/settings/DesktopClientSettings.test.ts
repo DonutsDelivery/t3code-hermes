@@ -59,6 +59,7 @@ const clientSettings: ClientSettings = {
   persistComposerContextStrip: true,
   providerModelPreferences: {},
   sidebarStatusRings: true,
+  tabStatusDots: true,
   showSkillActivityRows: true,
   showMemoryActivityRows: true,
   sidebarProjectGroupingMode: "repository_path",

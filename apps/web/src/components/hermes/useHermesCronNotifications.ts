@@ -16,7 +16,7 @@ import type { HermesCronWatcherProps } from "./HermesCronWatcher";
 
 export function useHermesCronNotifications({
   environmentId,
-  onNotification,
+  onAttention,
 }: HermesCronWatcherProps): void {
   const { view } = useHermesCron(environmentId);
   const navigate = useNavigate();
@@ -75,20 +75,20 @@ export function useHermesCronNotifications({
       });
       return;
     }
+    if (focused) return;
+    const tag = JSON.stringify(["hermes", environmentId, completion.jobId, completion.runId]);
+    const kind = completion.status === "failed" ? "failed" : "completion";
     if (
       !hasDesktopNotifications(mode) ||
-      focused ||
       typeof Notification === "undefined" ||
       Notification.permission !== "granted"
-    )
+    ) {
+      onAttention(environmentId, tag, kind, null);
       return;
+    }
     try {
-      const notification = new Notification(title, {
-        body: description,
-        tag: JSON.stringify(["hermes", environmentId, completion.jobId, completion.runId]),
-        silent: true,
-      });
-      onNotification(environmentId, notification);
+      const notification = new Notification(title, { body: description, tag, silent: true });
+      onAttention(environmentId, tag, kind, notification);
       notification.addEventListener("click", () => {
         notification.close();
         window.focus();
@@ -96,6 +96,7 @@ export function useHermesCronNotifications({
       });
     } catch {
       // Some browsers expose Notification but reject desktop presentation.
+      onAttention(environmentId, tag, kind, null);
     }
-  }, [environmentId, inAppEnabled, location, mode, navigate, onNotification, view.lastCompletion]);
+  }, [environmentId, inAppEnabled, location, mode, navigate, onAttention, view.lastCompletion]);
 }

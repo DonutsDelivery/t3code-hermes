@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
+  dots: false,
   toast: vi.fn(),
   shells: new Map(),
   navigate: vi.fn(),
@@ -40,8 +41,17 @@ vi.mock("../state/environments", () => ({
 }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
-    select: (settings: { notificationMode: string; inAppNotificationsEnabled: boolean }) => unknown,
-  ) => select({ notificationMode: state.mode, inAppNotificationsEnabled: state.inApp }),
+    select: (settings: {
+      notificationMode: string;
+      inAppNotificationsEnabled: boolean;
+      tabStatusDots: boolean;
+    }) => unknown,
+  ) =>
+    select({
+      notificationMode: state.mode,
+      inAppNotificationsEnabled: state.inApp,
+      tabStatusDots: state.dots,
+    }),
   getClientSettings: () => ({ notificationMode: state.mode }),
 }));
 vi.mock("../threadNotifications", async (importOriginal) => ({
@@ -150,6 +160,9 @@ function complete(environment = "one", completedAt = "2026-09-13T08:00:00Z") {
     shell({ latestTurn: { turnId: "turn", state: "completed", completedAt } }),
   );
 }
+function lastBadge() {
+  return state.badge.mock.lastCall?.[0];
+}
 async function render() {
   await act(async () => {
     if (renderer) renderer.update(<ThreadNotificationCoordinator />);
@@ -161,6 +174,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.mode = "notifications";
   state.inApp = false;
+  state.dots = false;
   state.environmentIds = ["one", "two"];
   state.hermes.clear();
   state.location = { pathname: "/", search: {} };
@@ -193,22 +207,22 @@ it("counts notifying threads across environments, replaces repeat alerts, and cl
   await render();
   complete();
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
   complete("one", "2026-09-13T08:01:00Z");
   complete("two");
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(2);
+  expect(lastBadge()).toBe(2);
   expect(TestNotification.sent[0]!.close).toHaveBeenCalledOnce();
   focused = true;
   window.dispatchEvent(new Event("focus"));
-  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(lastBadge()).toBe(0);
   expect(
     TestNotification.sent.every((notification) => notification.close.mock.calls.length > 0),
   ).toBe(true);
   focused = false;
   complete("two", "2026-09-13T08:02:00Z");
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
 });
 
 it("does not badge old completions on first load or reconnect", async () => {
@@ -227,18 +241,18 @@ it("removes alerts only from environments that leave the client", async () => {
   complete("one");
   complete("two");
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(2);
+  expect(lastBadge()).toBe(2);
   const [removed, retained] = TestNotification.sent;
   state.environmentIds = ["two"];
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
   expect(removed!.close).toHaveBeenCalledOnce();
   expect(retained!.close).not.toHaveBeenCalled();
   await render();
   expect(removed!.close).toHaveBeenCalledOnce();
   state.environmentIds = [];
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(lastBadge()).toBe(0);
   expect(retained!.close).toHaveBeenCalledOnce();
 });
 
@@ -257,54 +271,93 @@ it("starts a fresh count after another native app window gains focus", async () 
   complete();
   await render();
   clear!();
-  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(lastBadge()).toBe(0);
   complete("two");
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
   await act(async () => renderer!.unmount());
   renderer = undefined;
   expect(unsubscribe).toHaveBeenCalledOnce();
-  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(lastBadge()).toBe(0);
 });
 
-it.each(["off", "sound", "focused", "denied", "archived"])(
-  "does not show visual alerts when %s",
+it.each(["off", "sound", "denied"])(
+  "badges background completions without an OS alert when %s",
   async (condition) => {
     if (condition === "off" || condition === "sound") state.mode = condition;
-    if (condition === "focused") focused = true;
     if (condition === "denied") TestNotification.permission = "denied";
     await render();
     complete();
-    if (condition === "archived")
-      state.shells.set(
-        "one",
-        shell({
-          archivedAt: "2026-09-13T08:00:00Z",
-          hasPendingApprovals: true,
-        }),
-      );
     await render();
     expect(TestNotification.sent).toHaveLength(0);
-    expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
+    expect(state.badge).toHaveBeenLastCalledWith(1);
+    window.dispatchEvent(new Event("focus"));
+    expect(lastBadge()).toBe(0);
   },
 );
 
+it("with status dots on, colors the badge by the most severe alert and blinks only on arrival", async () => {
+  state.mode = "off";
+  state.dots = true;
+  await render();
+  complete("one");
+  state.shells.set("two", shell({ hasPendingApprovals: true }));
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(2, { kind: "input", blink: true });
+  state.shells.set("two", shell({ latestTurn: { ...thread.latestTurn, state: "error" } }));
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(2, { kind: "failed", blink: true });
+  complete("one", "2026-09-13T08:01:00Z");
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(2, { kind: "failed", blink: false });
+});
+
+it("keeps the plain count badge while status dots are off, and redraws when toggled", async () => {
+  state.mode = "off";
+  await render();
+  state.shells.set("one", shell({ hasPendingApprovals: true }));
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(1);
+  state.dots = true;
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(1, { kind: "input", blink: false });
+  state.dots = false;
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(1);
+});
+
+it.each(["focused", "archived"])("does not show visual alerts when %s", async (condition) => {
+  if (condition === "focused") focused = true;
+  await render();
+  complete();
+  if (condition === "archived")
+    state.shells.set(
+      "one",
+      shell({
+        archivedAt: "2026-09-13T08:00:00Z",
+        hasPendingApprovals: true,
+      }),
+    );
+  await render();
+  expect(TestNotification.sent).toHaveLength(0);
+  expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
+});
+
 it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
-  "badges %s and clears when notifications are disabled",
+  "badges %s and clears when the window regains focus",
   async (flag) => {
     await render();
     state.shells.set("one", shell({ [flag]: true }));
     await render();
-    expect(state.badge).toHaveBeenLastCalledWith(1);
+    expect(lastBadge()).toBe(1);
     const notification = TestNotification.sent[0]!;
     notification.dispatchEvent(new Event("click"));
     expect(state.navigate).toHaveBeenCalledWith({
       to: "/$environmentId/$threadId",
       params: { environmentId: EnvironmentId.make("one"), threadId: "thread" },
     });
-    state.mode = "sound";
-    await render();
-    expect(state.badge).toHaveBeenLastCalledWith(0);
+    window.dispatchEvent(new Event("focus"));
+    expect(lastBadge()).toBe(0);
     expect(notification.close).toHaveBeenCalled();
   },
 );
@@ -326,7 +379,7 @@ it("badges background failures with in-app notifications enabled", async () => {
   state.shells.set("one", shell({ latestTurn: { ...thread.latestTurn, state: "error" } }));
   await render();
   expect(TestNotification.sent[0]?.title).toBe("Thread failed");
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
   expect(state.toast).not.toHaveBeenCalled();
 });
 
@@ -358,7 +411,7 @@ it("shares Hermes and thread badge counts and opens the exact remote run", async
   await render();
   completeHermes();
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(2);
+  expect(lastBadge()).toBe(2);
   const notification = TestNotification.sent.at(-1)!;
   expect(notification.options).toMatchObject({ body: "The report is ready.", silent: true });
   notification.dispatchEvent(new Event("click"));
@@ -368,9 +421,9 @@ it("shares Hermes and thread badge counts and opens the exact remote run", async
   });
   state.environmentIds = ["one"];
   await render();
-  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(lastBadge()).toBe(1);
   window.dispatchEvent(new Event("focus"));
-  expect(state.badge).toHaveBeenLastCalledWith(0);
+  expect(lastBadge()).toBe(0);
 });
 
 it("previews a focused Hermes completion without a badge and does not replay it on preference changes", async () => {
@@ -427,7 +480,8 @@ it.each(["off", "sound", "denied", "default", "focused"])(
     await render();
     expect(TestNotification.sent).toHaveLength(0);
     expect(state.toast).not.toHaveBeenCalled();
-    expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
+    // Background runs still mark the tab; only a focused window skips it.
+    expect(lastBadge()).toBe(condition === "focused" ? 0 : 1);
   },
 );
 
@@ -451,6 +505,7 @@ it("suppresses the current run's in-app alert but still plays sound and marks it
 
 it("falls back to execution errors for legacy completions and treats hidden windows as unfocused", async () => {
   state.inApp = true;
+  state.dots = true;
   focused = true;
   visibility = "hidden";
   state.hermes.set("two", null);
@@ -466,4 +521,5 @@ it("falls back to execution errors for legacy completions and treats hidden wind
   await render();
   expect(TestNotification.sent.at(-1)?.options.body).toBe("Provider unavailable");
   expect(state.toast).not.toHaveBeenCalled();
+  expect(state.badge).toHaveBeenLastCalledWith(1, { kind: "failed", blink: true });
 });

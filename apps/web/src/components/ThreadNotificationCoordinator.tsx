@@ -24,11 +24,13 @@ import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironmentIds } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import {
+  ATTENTION_SEVERITY,
   hasDesktopNotifications,
   hasNotificationSound,
   playNotificationSound,
   setNotificationBadge,
   unlockNotificationAudio,
+  type AttentionKind,
 } from "../threadNotifications";
 import { HermesCronWatcher } from "./hermes/HermesCronWatcher";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
@@ -37,37 +39,54 @@ import { toastManager } from "./ui/toast";
 export function ThreadNotificationCoordinator() {
   const environmentIds = useEnvironmentIds();
   const mode = useClientSettings((settings) => settings.notificationMode);
-  const inAppNotificationsEnabled = useClientSettings(
-    (settings) => settings.inAppNotificationsEnabled,
-  );
-  const pending = useRef(
-    new Map<string, { environmentId: EnvironmentId; notification: Notification }>(),
-  );
-  const onNotification = useCallback((environmentId: EnvironmentId, notification: Notification) => {
-    pending.current.get(notification.tag)?.notification.close();
-    pending.current.set(notification.tag, { environmentId, notification });
-    setNotificationBadge(pending.current.size);
+  // Unseen background alerts, badged whether or not the OS notification was allowed.
+  const pending = useRef(new Map<string, PendingAttention>());
+  const statusDots = useClientSettings((settings) => settings.tabStatusDots);
+  const statusDotsRef = useRef(statusDots);
+  const syncBadge = useCallback((blink = false) => {
+    if (!statusDotsRef.current) {
+      setNotificationBadge(pending.current.size);
+      return;
+    }
+    let kind: AttentionKind = "completion";
+    for (const entry of pending.current.values()) {
+      if (ATTENTION_SEVERITY[entry.kind] > ATTENTION_SEVERITY[kind]) kind = entry.kind;
+    }
+    setNotificationBadge(pending.current.size, { kind, blink });
   }, []);
+  // Flipping the setting redraws any badge already showing, without a blink.
+  useEffect(() => {
+    if (statusDotsRef.current === statusDots) return;
+    statusDotsRef.current = statusDots;
+    if (pending.current.size > 0) syncBadge();
+  }, [statusDots, syncBadge]);
+  const onAttention = useCallback<OnAttention>(
+    (environmentId, tag, kind, notification) => {
+      pending.current.get(tag)?.notification?.close();
+      pending.current.set(tag, { environmentId, kind, notification });
+      syncBadge(kind !== "completion");
+    },
+    [syncBadge],
+  );
 
   useEffect(() => {
     const activeIds = new Set(environmentIds);
     const count = pending.current.size;
     for (const [tag, { environmentId, notification }] of pending.current) {
       if (activeIds.has(environmentId)) continue;
-      notification.close();
+      notification?.close();
       pending.current.delete(tag);
     }
-    if (count !== pending.current.size) setNotificationBadge(pending.current.size);
-  }, [environmentIds]);
+    if (count !== pending.current.size) syncBadge();
+  }, [environmentIds, syncBadge]);
 
   useEffect(() => {
     const clear = () => {
-      for (const { notification } of pending.current.values()) notification.close();
+      for (const { notification } of pending.current.values()) notification?.close();
       pending.current.clear();
       setNotificationBadge(0);
     };
     clear();
-    if (!hasDesktopNotifications(mode)) return;
     const unsubscribe = window.desktopBridge?.onNotificationBadgeClear?.(clear);
     window.addEventListener("focus", clear);
     return () => {
@@ -75,7 +94,7 @@ export function ThreadNotificationCoordinator() {
       window.removeEventListener("focus", clear);
       clear();
     };
-  }, [mode]);
+  }, []);
 
   useEffect(() => {
     if (!hasNotificationSound(mode)) return;
@@ -89,13 +108,25 @@ export function ThreadNotificationCoordinator() {
 
   return environmentIds.map((environmentId) => (
     <Fragment key={environmentId}>
-      <HermesCronWatcher environmentId={environmentId} onNotification={onNotification} />
-      {mode !== "off" || inAppNotificationsEnabled ? (
-        <EnvironmentNotifications environmentId={environmentId} onNotification={onNotification} />
-      ) : null}
+      <HermesCronWatcher environmentId={environmentId} onAttention={onAttention} />
+      <EnvironmentNotifications environmentId={environmentId} onAttention={onAttention} />
     </Fragment>
   ));
 }
+
+interface PendingAttention {
+  readonly environmentId: EnvironmentId;
+  readonly kind: AttentionKind;
+  readonly notification: Notification | null;
+}
+
+/** Records an alert the user has not seen yet because the window was in the background. */
+export type OnAttention = (
+  environmentId: EnvironmentId,
+  tag: string,
+  kind: AttentionKind,
+  notification: Notification | null,
+) => void;
 
 interface NotificationState {
   readonly raw: OrchestrationV2ThreadShell;
@@ -106,10 +137,10 @@ interface NotificationState {
 
 function EnvironmentNotifications({
   environmentId,
-  onNotification,
+  onAttention,
 }: {
   environmentId: EnvironmentId;
-  onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
+  onAttention: OnAttention;
 }) {
   const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
   const threads =
@@ -214,20 +245,20 @@ function EnvironmentNotifications({
         });
         continue;
       }
+      if (document.visibilityState === "visible" && document.hasFocus()) continue;
+      const tag = `${environmentId}:${thread.id}`;
+      const badgeKind = kind === "input" && status === "failed" ? "failed" : kind;
       if (
         !hasDesktopNotifications(mode) ||
-        (document.visibilityState === "visible" && document.hasFocus()) ||
         typeof Notification === "undefined" ||
         Notification.permission !== "granted"
-      )
+      ) {
+        onAttention(environmentId, tag, badgeKind, null);
         continue;
+      }
       try {
-        const notification = new Notification(title, {
-          body: thread.title,
-          tag: `${environmentId}:${thread.id}`,
-          silent: true,
-        });
-        onNotification(environmentId, notification);
+        const notification = new Notification(title, { body: thread.title, tag, silent: true });
+        onAttention(environmentId, tag, badgeKind, notification);
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();
@@ -238,6 +269,7 @@ function EnvironmentNotifications({
         });
       } catch {
         // Some browsers expose Notification but reject desktop presentation.
+        onAttention(environmentId, tag, badgeKind, null);
       }
     }
     previous.current = next;
@@ -248,7 +280,7 @@ function EnvironmentNotifications({
     inAppNotificationsEnabled,
     mode,
     navigate,
-    onNotification,
+    onAttention,
     threads,
   ]);
 

@@ -588,6 +588,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.sidebarStatusRings !== DEFAULT_UNIFIED_SETTINGS.sidebarStatusRings
         ? ["Thread status rings"]
         : []),
+      ...(settings.tabStatusDots !== DEFAULT_UNIFIED_SETTINGS.tabStatusDots
+        ? ["Tab status dots"]
+        : []),
       ...(settings.showSkillActivityRows !== DEFAULT_UNIFIED_SETTINGS.showSkillActivityRows
         ? ["Skill activity"]
         : []),
@@ -720,6 +723,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleKeepPullRequests,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarStatusRings,
+      settings.tabStatusDots,
       settings.showSkillActivityRows,
       settings.showMemoryActivityRows,
       settings.autoResumeLimitedThreads,
@@ -824,6 +828,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       sidebarStatusRings: DEFAULT_UNIFIED_SETTINGS.sidebarStatusRings,
+      tabStatusDots: DEFAULT_UNIFIED_SETTINGS.tabStatusDots,
       showSkillActivityRows: DEFAULT_UNIFIED_SETTINGS.showSkillActivityRows,
       showMemoryActivityRows: DEFAULT_UNIFIED_SETTINGS.showMemoryActivityRows,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
@@ -1542,6 +1547,29 @@ export function AppearanceSettingsPanel() {
                 updateSettings({ sidebarStatusRings: Boolean(checked) })
               }
               aria-label="Thread status rings"
+            />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("tab-status-dots")}
+          description="Mark the browser tab with a colored dot instead of a count while threads wait in the background: green when a turn finishes, amber when one needs you, red when one fails. Amber and red blink a few times when they arrive, unless your system reduces motion."
+          resetAction={
+            settings.tabStatusDots !== DEFAULT_UNIFIED_SETTINGS.tabStatusDots ? (
+              <SettingResetButton
+                label="tab status dots"
+                onClick={() =>
+                  updateSettings({
+                    tabStatusDots: DEFAULT_UNIFIED_SETTINGS.tabStatusDots,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.tabStatusDots}
+              onCheckedChange={(checked) => updateSettings({ tabStatusDots: Boolean(checked) })}
+              aria-label="Tab status dots"
             />
           }
         />
