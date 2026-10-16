@@ -59,9 +59,9 @@ import { useCallback, useMemo, useState } from "react";
 import { Alert, Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { AppText as Text } from "../../components/AppText";
-import { ScreenScrollView } from "../../components/ScreenScrollView";
+import { AndroidScreenHeader } from "../../components/ui/AndroidScreenHeader";
+import { AppText as Text } from "../../components/ui/AppText";
+import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
