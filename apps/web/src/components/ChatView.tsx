@@ -11207,6 +11207,7 @@ export default function ChatView(props: ChatViewProps) {
                                 isLocalDraftThread && activeProject === null
                               }
                               phase={phase}
+                              isCompacting={isCompacting}
                               // A mirrored Hermes run has no session here to stop.
                               canInterrupt={
                                 canInterruptRunningThread &&
