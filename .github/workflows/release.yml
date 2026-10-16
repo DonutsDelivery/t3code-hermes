@@ -775,11 +775,8 @@ jobs:
       resource_key: win32-arm64
       cli_archive: true
 
-  # npm gets the same bytes as the GitHub Release: the launcher plus one
-  # package per CLI archive. Preview publishes too, under the `preview`
-  # dist-tag, which nothing resolves unless asked for by name.
-  publish_cli:
-    name: Publish CLI to npm
+  release:
+    name: Publish GitHub Release
     needs:
       [
         preflight,
@@ -789,146 +786,13 @@ jobs:
         test_web,
         test_server,
         desktop_mac_arm64,
-        desktop_linux_x64,
-        desktop_linux_arm64,
-        desktop_win_x64,
-        desktop_win_arm64,
-      ]
-    if: ${{ !failure() && !cancelled() && github.repository == 'NateWeav/t3code-hermes' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.test_web.result == 'success' && needs.test_server.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' && needs.desktop_win_x64.result == 'success' && needs.desktop_win_arm64.result == 'success' }}
-    runs-on: ubuntu-24.04 # ubuntu-24.04
-    timeout-minutes: 35
-    permissions:
-      contents: read
-      id-token: write
-      issues: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=t3-hermes...
-              - --filter=@t3tools/scripts...
-
-      - name: Download all CLI archives
-        uses: actions/download-artifact@v8
-        with:
-          pattern: cli-*
-          merge-multiple: true
-          path: release-cli
-
-      # Trusted publishing cannot create a package, so a platform package that
-      # has never been published by hand cannot be published from here. Any
-      # such package is dropped from this release's npm packages (the launcher
-      # then reports the platform as unsupported) and an issue tracks it until
-      # it exists. Names come from NPM_PLATFORM_PACKAGE_NAMES.
-      - name: Skip platform packages not on npm yet
-        id: npm_platforms
-        env:
-          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
-        run: |
-          set -euo pipefail
-          missing=()
-          for archive in release-cli/t3-"$RELEASE_VERSION"-*; do
-            key="$(basename "$archive")"
-            key="${key#t3-"$RELEASE_VERSION"-}"
-            key="${key%.zip}"
-            key="${key%.tar.gz}"
-            name="$(node --input-type=module -e 'const { npmPlatformPackageName } = await import("./scripts/build-npm-platform-packages.ts"); console.log(npmPlatformPackageName(process.argv[1]));' "$key")"
-            # Retry transport errors (a single connection reset used to fail the
-            # whole release after every build finished). A 404 is not a curl
-            # error without --fail, so it is never retried.
-            status="$(curl -sS --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-time 30 -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/$name")"
-            case "$status" in
-              200) ;;
-              404)
-                echo "::warning::$name ($key) does not exist on npm; publishing without it."
-                rm "$archive"
-                missing+=("$name")
-                ;;
-              *)
-                echo "::error::npm registry returned HTTP $status for $name." >&2
-                exit 1
-                ;;
-            esac
-          done
-          echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
-
-      - name: Build npm packages from CLI archives
-        run: node scripts/build-npm-platform-packages.ts --archives-dir release-cli --version "${{ needs.preflight.outputs.version }}" --output-dir npm-packages ${{ steps.npm_platforms.outputs.missing && '--allow-missing' || '' }}
-
-      # A dry run of every package first: an auth or scope error here (the
-      # package never published, or one without a trusted publisher) fails
-      # before anything is live, instead of after some platforms already are.
-      - name: Check npm publish access (dry run)
-        run: |
-          if ! node apps/server/scripts/cli.ts publish --packages-dir npm-packages --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --provenance --dry-run --verbose; then
-            echo "::error::npm publish --dry-run failed. Make sure t3-hermes and every platform package in NPM_PLATFORM_PACKAGE_NAMES (scripts/build-npm-platform-packages.ts) exists on npm and has a trusted publisher registered for NateWeav/t3code-hermes .github/workflows/release.yml (see docs/operations/release.md)." >&2
-            exit 1
-          fi
-
-      - name: Publish CLI packages
-        run: node apps/server/scripts/cli.ts publish --packages-dir npm-packages --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --provenance --verbose
-
-      - name: Verify published CLI from npm
-        env:
-          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
-          RELEASE_DIST_TAG: ${{ needs.preflight.outputs.cli_dist_tag }}
-        run: bash scripts/verify-npm-release.sh "$RELEASE_VERSION" "$RELEASE_DIST_TAG"
-
-      - name: Compose skipped npm packages report
-        if: ${{ steps.npm_platforms.outputs.missing != '' }}
-        env:
-          MISSING: ${{ steps.npm_platforms.outputs.missing }}
-          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
-        run: |
-          set -euo pipefail
-          {
-            echo "\`t3-hermes@${RELEASE_VERSION}\` was published to npm without these platform packages, because they do not exist on npm yet:"
-            echo
-            for name in $MISSING; do echo "- \`$name\`"; done
-            echo
-            echo "\`npx t3-hermes\` reports those platforms as unsupported until they exist. Publish each one once by hand (npm support has to clear names its spam filter rejects), then register a trusted publisher for \`NateWeav/t3code-hermes\` \`.github/workflows/release.yml\` on it. Close this issue once every platform ships."
-            echo
-            echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
-          } > "$RUNNER_TEMP/npm-skipped.md"
-
-      - name: Report skipped npm packages
-        if: ${{ steps.npm_platforms.outputs.missing != '' }}
-        uses: ./.github/actions/report-automation-failure
-        with:
-          title: npm platform packages missing from release
-          body-file: ${{ runner.temp }}/npm-skipped.md
-          label: npm-packages-skipped
-          label-color: fbca04
-          label-description: A release published to npm without some platform packages.
-          github-token: ${{ github.token }}
-
-  release:
-    name: Publish GitHub Release
-    needs:
-      [
-        preflight,
-        desktop_mac_arm64,
         desktop_mac_x64,
         desktop_linux_x64,
         desktop_linux_arm64,
         desktop_win_x64,
         desktop_win_arm64,
-        publish_cli,
       ]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_mac_x64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' && needs.desktop_win_x64.result == 'success' && needs.desktop_win_arm64.result == 'success' && needs.publish_cli.result == 'success' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.test_web.result == 'success' && needs.test_server.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_mac_x64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' && needs.desktop_win_x64.result == 'success' && needs.desktop_win_arm64.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -1138,6 +1002,55 @@ jobs:
           fail_on_unmatched_files: true
           token: ${{ github.token }}
 
+  # The `t3-hermes` npm package is a launcher that downloads this version's
+  # CLI archive from the GitHub Release, so it publishes only once that
+  # release exists. Preview publishes too, under the `preview` dist-tag,
+  # which nothing resolves unless asked for by name.
+  publish_cli:
+    name: Publish CLI to npm
+    needs: [preflight, release]
+    if: ${{ !failure() && !cancelled() && github.repository == 'NateWeav/t3code-hermes' && needs.preflight.result == 'success' && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04 # blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=t3-hermes...
+              - --filter=@t3tools/scripts...
+
+      - name: Build the npm launcher
+        run: node scripts/build-npm-launcher.ts --version "${{ needs.preflight.outputs.version }}" --output-dir npm-packages
+
+      - name: Publish the npm launcher
+        run: |
+          if ! node apps/server/scripts/cli.ts publish --packages-dir npm-packages --tag "${{ needs.preflight.outputs.cli_dist_tag }}" --provenance --verbose; then
+            echo "::error::npm publish failed. Make sure package t3-hermes has a trusted publisher registered for NateWeav/t3code-hermes .github/workflows/release.yml (see docs/operations/release.md)." >&2
+            exit 1
+          fi
+
+      - name: Verify published CLI from npm
+        env:
+          RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
+          RELEASE_DIST_TAG: ${{ needs.preflight.outputs.cli_dist_tag }}
+        run: bash scripts/verify-npm-release.sh "$RELEASE_VERSION" "$RELEASE_DIST_TAG"
+
   publish_aur:
     name: Publish AUR package
     needs: [preflight, release]
@@ -1300,8 +1213,8 @@ jobs:
 
   deploy_web:
     name: Deploy hosted web app
-    needs: [preflight, build_web, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+    needs: [preflight, build_web, release, publish_cli]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:

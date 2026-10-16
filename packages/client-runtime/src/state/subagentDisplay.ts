@@ -9,7 +9,6 @@ import { formatTokens } from "@t3tools/shared/usageFormat";
 import { fileBasename } from "@t3tools/shared/path";
 import { isTerminalSubagentStatus } from "./subagentRuntime.ts";
 
-/** Summarizes one adjacent group, without changing its member identities or order. */
 export function subagentGroupSummary(
   members: ReadonlyArray<{ readonly status: OrchestrationV2TurnItemStatus }>,
 ) {
@@ -23,10 +22,6 @@ export function subagentGroupSummary(
   };
 }
 
-/**
- * Counts a group's states in the order a reader scans them: what is still
- * running first, then outcomes, using the agents panel's words.
- */
 export function summarizeSubagentStatuses(
   statuses: ReadonlyArray<OrchestrationV2TurnItemStatus>,
 ): string {
@@ -44,7 +39,6 @@ export function summarizeSubagentStatuses(
     .join(" · ");
 }
 
-/** Formats Codex task paths for display while leaving provider identity untouched. */
 export function formatSubagentDisplayTitle(title: string): string {
   const displayTitle = title.replace(/^Subagent:\s*/i, "");
   const path = /^\/root\/(?:[^/]+\/)*([^/]+)\/?$/u.exec(displayTitle);
@@ -54,7 +48,6 @@ export function formatSubagentDisplayTitle(title: string): string {
   return name.replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase()) || displayTitle;
 }
 
-/** Match desktop's model resolution and show only changes from the parent's workspace. */
 export function resolveSubagentMetadata(input: {
   readonly model: string | null;
   readonly provider?: Pick<ServerProvider, "driver" | "models"> | null | undefined;
@@ -125,7 +118,6 @@ export function subagentTokensLabel(
   return usage?.totalTokens === undefined ? null : `${formatTokens(usage.totalTokens)} tokens`;
 }
 
-/** Live work leads with progress; settled work leads with its result. */
 export function subagentDetailPreview(input: {
   readonly status: OrchestrationV2TurnItemStatus;
   readonly result?: string | null | undefined;

@@ -291,12 +291,12 @@ upstream-only infrastructure. This fork therefore diverges in `.github/workflows
   feed is derived from `GITHUB_REPOSITORY`, so fork builds self-update from fork releases.
   Dispatching `release.yml` by hand defaults to the `preview` channel, which nothing installs
   unless asked for by name.
-- **npm.** The CLI publishes as `t3-hermes` plus one package per platform archive under the
-  `nightly` dist-tag, through trusted publishing. Most are `t3-hermes-<platform>`; Windows uses
-  `nateweav-hermes-winbin-<arch>` because npm's spam filter rejects the `t3-hermes-win32-*` names
-  (`packages/shared/src/cliRelease.ts`). Intel macOS has no CLI archive. A platform package that
-  does not exist on npm yet is left out and reported in an `npm-packages-skipped` issue, because its
-  first publish has to be done by hand. Use `npx t3-hermes@nightly`: nightlies never move `latest`.
+- **npm.** The CLI publishes as the `t3-hermes` launcher under the `nightly` dist-tag, through
+  trusted publishing, after the GitHub Release. On first run it downloads its version's CLI archive
+  from this fork's releases into `~/.t3-hermes/runtime/versions/` (`scripts/npm-launcher/t3.mjs`).
+  The old per-platform packages (`t3-hermes-<platform>`, `nateweav-hermes-winbin-<arch>`) get no
+  new versions. Intel macOS has no CLI archive. Use `npx t3-hermes@nightly`: nightlies never move
+  `latest`.
 - **Mobile builds.** After each nightly and stable release, `release.yml` calls `mobile-ipa.yml`
   and `mobile-apk.yml` directly, because releases published with `GITHUB_TOKEN` never fire the
   `release` trigger. `mobile-ipa.yml` builds an unsigned, sideloadable `.ipa` on hosted macOS; Feather,

@@ -4,8 +4,7 @@ import * as Path from "effect/Path";
 import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 
 /**
- * Replaces a file's contents via a sibling temp file and rename. A symlinked
- * target is resolved first so the link survives and its destination is
+ * A symlinked target is resolved first so the link survives and its destination is
  * rewritten, since renaming over the link itself would swap it for a regular file.
  * A `mode` is set before the rename, so the file is never published with any
  * other, and a failure to set it leaves the old file in place.
