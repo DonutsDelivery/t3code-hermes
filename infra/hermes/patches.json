@@ -28,6 +28,11 @@
       "neededFor": "Live progress and background results for subagents Hermes delegates to. Without it, background subagents show as idle once dispatched.",
       "versions": [
         {
+          "hermesCommit": "8e3d11f9378636a009289fe9f151077787f0e673",
+          "hermesCommitDate": "2026-10-16T23:39:48Z",
+          "file": "acp-delegation-progress/8e3d11f93786.patch"
+        },
+        {
           "hermesCommit": "1e0c7730d791f5ce855c5c78935cfea6fb1e43a9",
           "hermesCommitDate": "2026-10-09T00:06:02Z",
           "file": "acp-delegation-progress/1e0c7730d791.patch"
