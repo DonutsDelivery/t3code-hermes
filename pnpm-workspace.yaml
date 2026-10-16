@@ -315,6 +315,8 @@ patchedDependencies:
   "@effect/vitest@4.0.5": patches/@effect__vitest@4.0.5.patch
   "@expo/metro-config@58.0.14": patches/@expo__metro-config@58.0.14.patch
   expo-sharing@58.0.18: patches/expo-sharing@58.0.18.patch
+  # The android/ hunks fix 58.0.18's stale io.github.jakex7.peek imports, which break the
+  # release APK build. 58.0.20 ships the same fix, so drop them when bumping.
   expo-widgets@58.0.18: patches/expo-widgets@58.0.18.patch
   "@ff-labs/fff-node@0.11.0": patches/@ff-labs__fff-node@0.11.0.patch
   "@legendapp/list@3.3.5": patches/@legendapp__list@3.3.5.patch
