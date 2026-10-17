@@ -105,7 +105,8 @@ The patch keeps the existing human-readable content while exposing `rawInput` ar
 routes through the executor's copied context variables, never goals, task indices, or FIFO order:
 overlapping delegations can have identical goals and batch-local indices, and unknown or conflicting
 ownership is dropped. Registry-forced stalls and worker crashes report through the same child relay,
-so detached work cannot stay falsely active. A parent result with `status: "dispatched"` only
+so detached work cannot stay falsely active, and their errors get the same secret redaction as other
+live child progress. A parent result with `status: "dispatched"` only
 acknowledges launch; child lifecycle events settle each subagent. The original ACP process must stay
 connected unless `acp-durable-completion-receipts` is also applied, which recovers missed results
 from disk.
