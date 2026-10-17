@@ -112,61 +112,53 @@ function machineStatus(machine: Machine): {
 
 export function HindsightAgentMemorySettings() {
   const { environments } = useEnvironments();
-  const connected = useMemo(
-    () =>
-      environments.filter(
-        (environment) =>
-          environment.connection.phase === "connected" && environment.serverConfig !== null,
-      ),
-    [environments],
+  const connected = environments.filter(
+    (environment) =>
+      environment.connection.phase === "connected" && environment.serverConfig !== null,
   );
   const machines = useAtomValue(
-    useMemo(
-      () =>
-        Atom.make((get): ReadonlyArray<Machine> =>
-          connected.map((environment) => {
-            const { environmentId } = environment;
-            const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
-            const sessionResult = isPrimary
-              ? get(primarySessionStateAtom)
-              : get(environmentSession.sessionStateAtom(environmentId));
-            const access = {
-              session: Option.getOrNull(AsyncResult.value(sessionResult)),
-              isPending: sessionResult.waiting,
-              hasError: sessionResult._tag === "Failure",
-            };
-            const operate = isPrimary
-              ? resolvePrimaryOperateAccess({ ...access, isPrimary, hasDesktopBridge: isElectron })
-              : resolveRemoteOperateAccess(access);
-            const saved =
-              get(serverEnvironment.settingsValueAtom(environmentId))?.integrations.hindsight ??
-              environment.serverConfig!.settings.integrations.hindsight;
-            const banksResult = get(serverEnvironment.hindsightBanks({ environmentId, input: {} }));
-            const banks = Option.getOrNull(AsyncResult.value(banksResult));
-            const memoryResult = get(
-              serverEnvironment.hindsightAgentMemory({ environmentId, input: {} }),
-            );
-            const state = Option.getOrNull(AsyncResult.value(memoryResult));
-            const connection = banks?.connection;
-            return {
-              environment,
-              writable: operate === "granted",
-              saved,
-              enabled: saved.agentMemory,
-              refreshing: banksResult.waiting,
-              hasServer: connection === undefined ? null : connection !== null,
-              serverUrl: connection?.baseUrl ?? null,
-              savedUrl: saved.baseUrl ?? "",
-              hasSavedKey: (saved.apiKey ?? "").length > 0,
-              serverHasKey: connection?.hasApiKey === true,
-              state,
-              summary: describeHindsightAgentMemory(state, { enabled: saved.agentMemory }),
-              applying: state?.applying === true,
-              unsupported: state === null && memoryResult._tag === "Failure",
-            };
-          }),
-        ),
-      [connected],
+    Atom.make((get): ReadonlyArray<Machine> =>
+      connected.map((environment) => {
+        const { environmentId } = environment;
+        const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
+        const sessionResult = isPrimary
+          ? get(primarySessionStateAtom)
+          : get(environmentSession.sessionStateAtom(environmentId));
+        const access = {
+          session: Option.getOrNull(AsyncResult.value(sessionResult)),
+          isPending: sessionResult.waiting,
+          hasError: sessionResult._tag === "Failure",
+        };
+        const operate = isPrimary
+          ? resolvePrimaryOperateAccess({ ...access, isPrimary, hasDesktopBridge: isElectron })
+          : resolveRemoteOperateAccess(access);
+        const saved =
+          get(serverEnvironment.settingsValueAtom(environmentId))?.integrations.hindsight ??
+          environment.serverConfig!.settings.integrations.hindsight;
+        const banksResult = get(serverEnvironment.hindsightBanks({ environmentId, input: {} }));
+        const banks = Option.getOrNull(AsyncResult.value(banksResult));
+        const memoryResult = get(
+          serverEnvironment.hindsightAgentMemory({ environmentId, input: {} }),
+        );
+        const state = Option.getOrNull(AsyncResult.value(memoryResult));
+        const connection = banks?.connection;
+        return {
+          environment,
+          writable: operate === "granted",
+          saved,
+          enabled: saved.agentMemory,
+          refreshing: banksResult.waiting,
+          hasServer: connection === undefined ? null : connection !== null,
+          serverUrl: connection?.baseUrl ?? null,
+          savedUrl: saved.baseUrl ?? "",
+          hasSavedKey: (saved.apiKey ?? "").length > 0,
+          serverHasKey: connection?.hasApiKey === true,
+          state,
+          summary: describeHindsightAgentMemory(state, { enabled: saved.agentMemory }),
+          applying: state?.applying === true,
+          unsupported: state === null && memoryResult._tag === "Failure",
+        };
+      }),
     ),
   );
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
@@ -204,33 +196,31 @@ export function HindsightAgentMemorySettings() {
 
   const writeAll = async (patchFor: (machine: Machine) => HindsightPatch | null) => {
     setSaving(true);
-    try {
-      await Promise.all(
-        writable.flatMap((machine) => {
-          const patch = patchFor(machine);
-          return patch === null
-            ? []
-            : [
-                updateSettings({
-                  environmentId: machine.environment.environmentId,
-                  input: { patch: { integrations: { hindsight: patch } } },
-                }),
-              ];
+    // Atom commands settle into a result instead of rejecting, so cleanup follows the await.
+    await Promise.all(
+      writable.flatMap((machine) => {
+        const patch = patchFor(machine);
+        return patch === null
+          ? []
+          : [
+              updateSettings({
+                environmentId: machine.environment.environmentId,
+                input: { patch: { integrations: { hindsight: patch } } },
+              }),
+            ];
+      }),
+    );
+    // The server answers from its new settings on the next read; read now.
+    for (const machine of writable) {
+      registry.refresh(
+        serverEnvironment.hindsightBanks({
+          environmentId: machine.environment.environmentId,
+          input: {},
         }),
       );
-      // The server answers from its new settings on the next read; read now.
-      for (const machine of writable) {
-        registry.refresh(
-          serverEnvironment.hindsightBanks({
-            environmentId: machine.environment.environmentId,
-            input: {},
-          }),
-        );
-      }
-      setApiKeyDraft("");
-    } finally {
-      setSaving(false);
     }
+    setApiKeyDraft("");
+    setSaving(false);
   };
 
   // A machine without a server is handed the shared one, and a key entered

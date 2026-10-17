@@ -33,7 +33,7 @@ import {
 } from "@t3tools/client-runtime/state/hindsight";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { toastManager } from "../components/ui/toast";
 import { useHermesEnvironmentId } from "./hermesCron";
@@ -82,22 +82,20 @@ export interface HindsightMemoryActions {
   readonly dismissReflection: () => void;
 }
 
+const hindsightEnabledAtom = Atom.family((environmentId: EnvironmentId | null) =>
+  Atom.make((get) =>
+    environmentId === null
+      ? true
+      : (get(serverEnvironment.settingsValueAtom(environmentId))?.integrations.hindsight.enabled ??
+        true),
+  ),
+);
+
 export function useHindsightMemory(): HindsightMemoryState & HindsightMemoryActions {
   // Hindsight is configured beside Hermes, so the panel reads both from the
   // same environment rather than defaulting to whichever one opened first.
   const environmentId = useHermesEnvironmentId();
-  const enabled = useAtomValue(
-    useMemo(
-      () =>
-        Atom.make((get) =>
-          environmentId === null
-            ? true
-            : (get(serverEnvironment.settingsValueAtom(environmentId))?.integrations.hindsight
-                .enabled ?? true),
-        ),
-      [environmentId],
-    ),
-  );
+  const enabled = useAtomValue(hindsightEnabledAtom(environmentId));
 
   const [selectedBank, setSelectedBank] = useState<HindsightBankId | null>(null);
   const selectedBankRef = useRef<HindsightBankId | null>(null);
@@ -119,7 +117,10 @@ export function useHindsightMemory(): HindsightMemoryState & HindsightMemoryActi
     selectedBank !== null && banks.some((candidate) => candidate.id === selectedBank)
       ? selectedBank
       : (banksQuery.data?.defaultBank ?? banks[0]?.id ?? null);
-  selectedBankRef.current = bank;
+  // A reflection that lands after the bank changed belongs to the old bank.
+  useEffect(() => {
+    selectedBankRef.current = bank;
+  }, [bank]);
 
   const isRecalling = submittedQuery.length > 0;
 
@@ -162,59 +163,54 @@ export function useHindsightMemory(): HindsightMemoryState & HindsightMemoryActi
   const refreshBanks = banksQuery.refresh;
   const refreshStats = statsQuery.refresh;
 
-  const retry = useCallback(() => {
+  const retry = () => {
     refreshBanks();
     refreshList();
     refreshRecall();
     refreshStats();
-  }, [refreshBanks, refreshList, refreshRecall, refreshStats]);
+  };
 
-  const submitQuery = useCallback((query: string) => {
+  const submitQuery = (query: string) => {
     setSubmittedQuery(query.trim());
-  }, []);
+  };
 
-  const clearQuery = useCallback(() => setSubmittedQuery(""), []);
+  const clearQuery = () => setSubmittedQuery("");
 
-  const selectBank = useCallback((next: HindsightBankId) => {
+  const selectBank = (next: HindsightBankId) => {
     setSelectedBank(next);
     // A reflection is about one bank. Carrying it across would misattribute it.
     setReflection(null);
-  }, []);
+  };
 
-  const retain = useCallback(
-    async (text: string): Promise<boolean> => {
-      const trimmed = text.trim();
-      if (environmentId === null || bank === null || trimmed.length === 0) return false;
-      setIsRetaining(true);
-      try {
-        const result = await retainCommand({ environmentId, input: { bank, text: trimmed } });
-        if (result._tag !== "Success") {
-          // An interrupted command means the user navigated away, not a failure.
-          if (!isAtomCommandInterrupted(result)) {
-            toastManager.add({
-              type: "error",
-              title: "Note not saved",
-              description: "Hindsight did not accept the note.",
-            });
-          }
-          return false;
-        }
+  const retain = async (text: string): Promise<boolean> => {
+    const trimmed = text.trim();
+    if (environmentId === null || bank === null || trimmed.length === 0) return false;
+    setIsRetaining(true);
+    // Atom commands settle into a result instead of rejecting, so cleanup follows the await.
+    const result = await retainCommand({ environmentId, input: { bank, text: trimmed } });
+    setIsRetaining(false);
+    if (result._tag !== "Success") {
+      // An interrupted command means the user navigated away, not a failure.
+      if (!isAtomCommandInterrupted(result)) {
         toastManager.add({
-          type: "success",
-          title: "Note saved",
-          description: describeHindsightRetainResult(result.value.itemsCount),
+          type: "error",
+          title: "Note not saved",
+          description: "Hindsight did not accept the note.",
         });
-        // The new memory is only in the list after a re-read.
-        retry();
-        return true;
-      } finally {
-        setIsRetaining(false);
       }
-    },
-    [bank, environmentId, retainCommand, retry],
-  );
+      return false;
+    }
+    toastManager.add({
+      type: "success",
+      title: "Note saved",
+      description: describeHindsightRetainResult(result.value.itemsCount),
+    });
+    // The new memory is only in the list after a re-read.
+    retry();
+    return true;
+  };
 
-  const reflect = useCallback(() => {
+  const reflect = () => {
     if (environmentId === null || bank === null || isReflecting) return;
     setIsReflecting(true);
     const reflectBank = bank;
@@ -240,67 +236,38 @@ export function useHindsightMemory(): HindsightMemoryState & HindsightMemoryActi
         refreshStats();
       })
       .finally(() => setIsReflecting(false));
-  }, [bank, environmentId, isReflecting, reflectCommand, refreshStats, submittedQuery]);
+  };
 
-  const dismissReflection = useCallback(() => setReflection(null), []);
+  const dismissReflection = () => setReflection(null);
 
-  return useMemo(
-    () => ({
-      environmentId,
-      enabled,
-      status,
-      banks,
-      bank,
-      pathway,
-      submittedQuery,
-      memories,
-      hasMore: activeQuery.data?.hasMore ?? false,
-      // A failed stats read answers with `stats: null`, which renders as no
-      // strip at all — the list beside it is unaffected either way.
-      stats: statsQuery.data?.stats ?? null,
-      isStatsPending: bank !== null && statsQuery.data === null && statsQuery.error === null,
-      // A list already on screen outranks a refetch: swapping a chip keeps the
-      // previous rows readable instead of flashing back to a skeleton.
-      isPending: (banksQuery.isPending || activeQuery.isPending) && activeQuery.data === null,
-      error: activeQuery.error ?? banksQuery.error,
-      reflection,
-      isReflecting,
-      isRetaining,
-      selectBank,
-      selectPathway: setPathway,
-      submitQuery,
-      clearQuery,
-      retry,
-      retain,
-      reflect,
-      dismissReflection,
-    }),
-    [
-      activeQuery.data,
-      activeQuery.error,
-      activeQuery.isPending,
-      bank,
-      banks,
-      banksQuery.error,
-      banksQuery.isPending,
-      clearQuery,
-      dismissReflection,
-      enabled,
-      environmentId,
-      isReflecting,
-      isRetaining,
-      memories,
-      pathway,
-      reflect,
-      reflection,
-      retain,
-      retry,
-      selectBank,
-      status,
-      statsQuery.data,
-      statsQuery.error,
-      submitQuery,
-      submittedQuery,
-    ],
-  );
+  return {
+    environmentId,
+    enabled,
+    status,
+    banks,
+    bank,
+    pathway,
+    submittedQuery,
+    memories,
+    hasMore: activeQuery.data?.hasMore ?? false,
+    // A failed stats read answers with `stats: null`, which renders as no
+    // strip at all — the list beside it is unaffected either way.
+    stats: statsQuery.data?.stats ?? null,
+    isStatsPending: bank !== null && statsQuery.data === null && statsQuery.error === null,
+    // A list already on screen outranks a refetch: swapping a chip keeps the
+    // previous rows readable instead of flashing back to a skeleton.
+    isPending: (banksQuery.isPending || activeQuery.isPending) && activeQuery.data === null,
+    error: activeQuery.error ?? banksQuery.error,
+    reflection,
+    isReflecting,
+    isRetaining,
+    selectBank,
+    selectPathway: setPathway,
+    submitQuery,
+    clearQuery,
+    retry,
+    retain,
+    reflect,
+    dismissReflection,
+  };
 }

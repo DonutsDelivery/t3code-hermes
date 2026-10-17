@@ -130,17 +130,15 @@ function MemoryFileCard({
     pendingRef.current = true;
     setPending(true);
     setError(null);
-    try {
-      const failure = await mutate(input);
-      if (failure !== null) {
-        setError(failure);
-        return;
-      }
-      close();
-    } finally {
-      pendingRef.current = false;
-      setPending(false);
+    // `mutate` settles into a message instead of rejecting, so cleanup follows the await.
+    const failure = await mutate(input);
+    pendingRef.current = false;
+    setPending(false);
+    if (failure !== null) {
+      setError(failure);
+      return;
     }
+    close();
   };
 
   return (

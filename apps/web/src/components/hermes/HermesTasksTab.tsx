@@ -21,7 +21,7 @@ import {
   PlayIcon,
   PlusIcon,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { cn } from "../../lib/utils";
 import { useHermesCron } from "../../state/hermesCron";
@@ -76,7 +76,7 @@ function TaskRow({
   readonly onSetMuted: (jobId: HermesCronJobId, muted: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(targeted);
-  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+  const toggleExpanded = () => setExpanded((value) => !value);
   const pauseLabel = job.enabled ? "Pause task" : "Resume task";
   const muteLabel = job.muted ? "Unmute notifications" : "Mute notifications";
 

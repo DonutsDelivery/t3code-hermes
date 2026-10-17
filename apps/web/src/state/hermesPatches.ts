@@ -66,51 +66,46 @@ export function useHermesPatches() {
   const restartGateway = async () => {
     if (environmentId === null || busy || requestingRestart || restarting) return;
     setRequestingRestart(true);
-    try {
-      const result = await restartCommand({ environmentId, input: {} });
-      if (result._tag !== "Success" && !isAtomCommandInterrupted(result)) {
-        toastManager.add({
-          type: "error",
-          title: "Gateway not restarted",
-          description: describeHermesPatchFailure(
-            squashAtomCommandFailure(result),
-            "The Hermes gateway could not be restarted.",
-          ),
-        });
-      }
-    } finally {
-      setRequestingRestart(false);
-      refresh();
+    // Atom commands settle into a result instead of rejecting, so cleanup follows the await.
+    const result = await restartCommand({ environmentId, input: {} });
+    if (result._tag !== "Success" && !isAtomCommandInterrupted(result)) {
+      toastManager.add({
+        type: "error",
+        title: "Gateway not restarted",
+        description: describeHermesPatchFailure(
+          squashAtomCommandFailure(result),
+          "The Hermes gateway could not be restarted.",
+        ),
+      });
     }
+    setRequestingRestart(false);
+    refresh();
   };
 
   const change = async (patchId: HermesPatchId, direction: "apply" | "remove") => {
     if (environmentId === null || busy) return;
     setChanging((current) => ({ ...current, [environmentId]: patchId }));
-    try {
-      const command = direction === "apply" ? applyCommand : revertCommand;
-      const result = await command({ environmentId, input: { patchId } });
-      if (result._tag === "Success") {
-        toastManager.add({
-          type: "success",
-          title: direction === "apply" ? "Patch applied" : "Patch removed",
-          description: "New Hermes sessions pick this up. Running sessions keep what they had.",
-        });
-      } else if (!isAtomCommandInterrupted(result)) {
-        toastManager.add({
-          type: "error",
-          title: direction === "apply" ? "Patch not applied" : "Patch not removed",
-          description: describeHermesPatchFailure(
-            squashAtomCommandFailure(result),
-            "The Hermes checkout could not be changed.",
-          ),
-        });
-      }
-    } finally {
-      setChanging((current) => without(current, environmentId));
-      // Success or not, the checkout is the source of truth: read it again.
-      refresh();
+    const command = direction === "apply" ? applyCommand : revertCommand;
+    const result = await command({ environmentId, input: { patchId } });
+    if (result._tag === "Success") {
+      toastManager.add({
+        type: "success",
+        title: direction === "apply" ? "Patch applied" : "Patch removed",
+        description: "New Hermes sessions pick this up. Running sessions keep what they had.",
+      });
+    } else if (!isAtomCommandInterrupted(result)) {
+      toastManager.add({
+        type: "error",
+        title: direction === "apply" ? "Patch not applied" : "Patch not removed",
+        description: describeHermesPatchFailure(
+          squashAtomCommandFailure(result),
+          "The Hermes checkout could not be changed.",
+        ),
+      });
     }
+    setChanging((current) => without(current, environmentId));
+    // Success or not, the checkout is the source of truth: read it again.
+    refresh();
   };
 
   /** Removes the patches, updates Hermes, and reapplies; the outcome stays as a line in the tab. */
@@ -118,29 +113,26 @@ export function useHermesPatches() {
     if (environmentId === null || busy) return;
     setUpdatingIn((current) => new Set(current).add(environmentId));
     setSummaries((current) => without(current, environmentId));
-    try {
-      const result = await updateCommand({ environmentId, input: {} });
-      if (result._tag === "Success") {
-        const text = describeHermesUpdateResult(result.value);
-        setSummaries((current) => ({ ...current, [environmentId]: text }));
-      } else if (!isAtomCommandInterrupted(result)) {
-        toastManager.add({
-          type: "error",
-          title: "Hermes not updated",
-          description: describeHermesPatchFailure(
-            squashAtomCommandFailure(result),
-            "Hermes could not be updated.",
-          ),
-        });
-      }
-    } finally {
-      setUpdatingIn((current) => {
-        const next = new Set(current);
-        next.delete(environmentId);
-        return next;
+    const result = await updateCommand({ environmentId, input: {} });
+    if (result._tag === "Success") {
+      const text = describeHermesUpdateResult(result.value);
+      setSummaries((current) => ({ ...current, [environmentId]: text }));
+    } else if (!isAtomCommandInterrupted(result)) {
+      toastManager.add({
+        type: "error",
+        title: "Hermes not updated",
+        description: describeHermesPatchFailure(
+          squashAtomCommandFailure(result),
+          "Hermes could not be updated.",
+        ),
       });
-      refresh();
     }
+    setUpdatingIn((current) => {
+      const next = new Set(current);
+      next.delete(environmentId);
+      return next;
+    });
+    refresh();
   };
 
   return {

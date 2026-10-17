@@ -70,18 +70,16 @@ function PaperclipSettingsControls({ environmentId }: { readonly environmentId: 
 
   const save = async (patch: PaperclipPatch) => {
     setSaving(true);
-    try {
-      const saveResult = await updateSettings({
-        environmentId,
-        input: { patch: { integrations: { paperclip: patch } } },
-      });
-      if (saveResult._tag === "Success") {
-        setApiKeyDraft("");
-        overviewQuery.refresh();
-      }
-    } finally {
-      setSaving(false);
+    // Atom commands settle into a result instead of rejecting, so cleanup follows the await.
+    const saveResult = await updateSettings({
+      environmentId,
+      input: { patch: { integrations: { paperclip: patch } } },
+    });
+    if (saveResult._tag === "Success") {
+      setApiKeyDraft("");
+      overviewQuery.refresh();
     }
+    setSaving(false);
   };
   const disabled = saving || !saved.enabled;
 

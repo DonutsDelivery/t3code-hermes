@@ -345,9 +345,6 @@ function PullRequestsRouteView() {
     sort === "ready" || sort === "largest" || sort === "smallest" ? "eager" : "visible";
   const navigate = useNavigate({ from: Route.fullPath });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { environments } = useEnvironments();
-  const allProjects = useProjects();
-  const projectsKnown = useAllEnvironmentShellsBootstrapped();
   const {
     capableEnvironments,
     scopedEnvironmentId,
@@ -365,7 +362,8 @@ function PullRequestsRouteView() {
     assignmentKey,
     linkedSelection,
     expectedHosts,
-  } = usePullRequestScope(environments, allProjects, projectsKnown, search);
+    projectsKnown,
+  } = usePullRequestScope(search);
   const rightPanelRef = capableEnvironments.length === 0 ? null : PULL_REQUESTS_PANEL_REF;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(rightPanelRef);
   const rightPanelState = useRightPanelStore((state) =>
@@ -448,9 +446,9 @@ function PullRequestsRouteView() {
 
   const typedQuery = (search.q ?? "").trim();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const sentQuery = useDebouncedValue(typedQuery, SEARCH_DEBOUNCE_MS);
-  const querySettled = typedQuery === sentQuery;
   const {
+    sentQuery,
+    querySettled,
     typedParsed,
     sentParsed,
     menuFilters,
@@ -459,7 +457,7 @@ function PullRequestsRouteView() {
     hasFilters,
     localFilters,
     hasLocalFilters,
-  } = usePullRequestQueryFilters(search, typedQuery, sentQuery);
+  } = usePullRequestQueryFilters(search, typedQuery);
   const turnRefreshes = usePullRequestTurnRefreshes(
     environmentQueries.map(({ environmentId }) => environmentId),
   );
@@ -883,7 +881,7 @@ function PullRequestsRouteView() {
     groups,
     entriesByStatsKey,
     heldPullRequestsBySurface,
-  } = usePullRequestGroups({
+  } = pullRequestGroups({
     known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
@@ -1071,37 +1069,28 @@ function PullRequestsRouteView() {
     refreshListAndStats(requestedStatsScope);
     setDetailRefreshToken((token) => token + 1);
   };
-  const [hostsState, setHostsState] = useState<{
-    readonly source: MergedPullRequestList | null;
-    readonly host: string | undefined;
-    readonly hosts: PullRequestListResult["providers"];
-  }>({ source: null, host: undefined, hosts: [] });
-  if (answered !== null && (hostsState.source !== answered || hostsState.host !== search.host)) {
-    setHostsState({
-      source: answered,
-      host: search.host,
-      hosts:
-        search.host === undefined || hostsState.hosts.length === 0
-          ? answered.providers
-          : hostsState.hosts,
-    });
-  }
-  const hosts = hostsState.hosts;
+  const {
+    hosts,
+    displayGroups,
+    shownCount,
+    hostActionsOf,
+    closeSweepRows,
+    listedPullRequestsBySurface,
+  } = usePullRequestDisplayGroups({
+    answered,
+    host: search.host,
+    groups,
+    statsByRow,
+    overrides,
+    state: search.state,
+    localFilters,
+    hasLocalFilters,
+    viewers,
+    sort,
+    text: typedParsed.text,
+    involvement: search.involvement,
+  });
   const showProvider = hosts.length > 1;
-  const { displayGroups, shownCount, hostActionsOf, closeSweepRows, listedPullRequestsBySurface } =
-    usePullRequestDisplayGroups({
-      groups,
-      statsByRow,
-      overrides,
-      state: search.state,
-      localFilters,
-      hasLocalFilters,
-      viewers,
-      sort,
-      text: typedParsed.text,
-      involvement: search.involvement,
-      hosts,
-    });
   const [closeSweepKeys, setCloseSweepKeys] = useState<ReadonlySet<string>>(() => new Set());
   const closeSensorRef = useRef<SidebarPointerSensor | null>(null);
   // A sweep spans many renders; each step reads the rows on screen at that moment.
@@ -1779,14 +1768,10 @@ function PullRequestsRouteView() {
 }
 
 /** Which servers and projects the page reads, from the URL and what this client knows. */
-function usePullRequestScope(
-  environments: ReturnType<typeof useEnvironments>["environments"],
-  allProjects: ReturnType<typeof useProjects>,
-  projectsKnown: boolean,
-  search: PullRequestsSearch,
-) {
-  // Calls no hooks, so the compiler needs the directive to memoize it.
-  "use memo";
+function usePullRequestScope(search: PullRequestsSearch) {
+  const { environments } = useEnvironments();
+  const allProjects = useProjects();
+  const projectsKnown = useAllEnvironmentShellsBootstrapped();
   const capableEnvironments = environments
     .filter(
       (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
@@ -1915,16 +1900,12 @@ function usePullRequestScope(
     assignmentKey,
     linkedSelection,
     expectedHosts,
+    projectsKnown,
   };
 }
 
-function usePullRequestQueryFilters(
-  search: PullRequestsSearch,
-  typedQuery: string,
-  sentQuery: string,
-) {
-  // Calls no hooks, so the compiler needs the directive to memoize it.
-  "use memo";
+function usePullRequestQueryFilters(search: PullRequestsSearch, typedQuery: string) {
+  const sentQuery = useDebouncedValue(typedQuery, SEARCH_DEBOUNCE_MS);
   const typedParsed = parsePullRequestQuery(typedQuery);
   const sentParsed = parsePullRequestQuery(sentQuery);
 
@@ -1941,6 +1922,8 @@ function usePullRequestQueryFilters(
   const localFilters = { ...menuFilters, ...typedParsed.filters };
   const hasLocalFilters = Object.keys(localFilters).length > 0;
   return {
+    sentQuery,
+    querySettled: typedQuery === sentQuery,
     typedParsed,
     sentParsed,
     menuFilters,
@@ -1953,7 +1936,7 @@ function usePullRequestQueryFilters(
 }
 
 /** The held rows narrowed to what the reader asked for, in the groups the list shows. */
-function usePullRequestGroups({
+function pullRequestGroups({
   known,
   providers,
   viewers,
@@ -1982,8 +1965,6 @@ function usePullRequestGroups({
   reviewing: ReadonlyArray<EnvironmentPullRequestEntry> | undefined;
   partitionsWanted: boolean;
 }) {
-  // Calls no hooks, so the compiler needs the directive to memoize it.
-  "use memo";
   const searchingHosts = new Set(
     providers.flatMap((provider) => (provider.searchesOnHost ? [provider.host] : [])),
   );
@@ -2059,8 +2040,13 @@ function usePullRequestGroups({
   };
 }
 
-/** The groups as shown: with measured sizes, optimistic actions, and the reader's sort. */
+/**
+ * The hosts the list has answered for (kept while a host filter narrows the answer), and the
+ * groups as shown with measured sizes, optimistic actions, and the reader's sort.
+ */
 function usePullRequestDisplayGroups({
+  answered,
+  host,
   groups,
   statsByRow,
   overrides,
@@ -2071,8 +2057,9 @@ function usePullRequestDisplayGroups({
   sort,
   text,
   involvement,
-  hosts,
 }: {
+  answered: MergedPullRequestList | null;
+  host: string | undefined;
   groups: ReadonlyArray<PullRequestGroup<EnvironmentPullRequestEntry>>;
   statsByRow: PullRequestDiffStats;
   overrides: ReadonlyMap<string, PullRequestListOverride>;
@@ -2083,13 +2070,24 @@ function usePullRequestDisplayGroups({
   sort: PullRequestListSort;
   text: string;
   involvement: PullRequestInvolvement;
-  hosts: PullRequestListResult["providers"];
 }) {
-  // Calls no hooks, so the compiler needs the directive to memoize it.
-  "use memo";
+  const [hostsState, setHostsState] = useState<{
+    readonly source: MergedPullRequestList | null;
+    readonly host: string | undefined;
+    readonly hosts: PullRequestListResult["providers"];
+  }>({ source: null, host: undefined, hosts: [] });
+  if (answered !== null && (hostsState.source !== answered || hostsState.host !== host)) {
+    setHostsState({
+      source: answered,
+      host,
+      hosts:
+        host === undefined || hostsState.hosts.length === 0 ? answered.providers : hostsState.hosts,
+    });
+  }
+  const hosts = hostsState.hosts;
   const displayGroups = (() => {
     const enriched = groups.map((group) => {
-      const answered = applyPullRequestOverrides(
+      const overridden = applyPullRequestOverrides(
         group.entries.map((entry) => withDiffStat(entry, statsByRow)),
         overrides,
         pullRequestEntryKey,
@@ -2099,7 +2097,7 @@ function usePullRequestDisplayGroups({
         ...group,
         entries:
           hasLocalFilters && overrides.size > 0
-            ? answered.filter(
+            ? overridden.filter(
                 (entry) =>
                   !overrides.has(pullRequestEntryKey(entry)) ||
                   matchesPullRequestFilters(
@@ -2108,7 +2106,7 @@ function usePullRequestDisplayGroups({
                     pullRequestEntryViewer(entry, viewers),
                   ),
               )
-            : answered,
+            : overridden,
       };
     });
     return sortPullRequestGroups(
@@ -2136,6 +2134,7 @@ function usePullRequestDisplayGroups({
   );
 
   return {
+    hosts,
     displayGroups,
     shownCount,
     hostActionsOf,

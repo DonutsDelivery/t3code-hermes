@@ -12,7 +12,7 @@ import {
 import type { HindsightBankId, HindsightBankStats, HindsightMemory } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { PlugZapIcon, RefreshCwIcon, SettingsIcon, SparklesIcon, XIcon } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { useHindsightMemory } from "../../state/hindsight";
 import { HermesNativeMemorySection } from "./HermesNativeMemorySection";
@@ -112,18 +112,15 @@ function RetainNote({
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
 
-  const submit = useCallback(
-    (event: React.FormEvent) => {
-      event.preventDefault();
-      if (text.trim().length === 0) return;
-      void onRetain(text).then((saved) => {
-        if (!saved) return;
-        setText("");
-        setOpen(false);
-      });
-    },
-    [onRetain, text],
-  );
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (text.trim().length === 0) return;
+    void onRetain(text).then((saved) => {
+      if (!saved) return;
+      setText("");
+      setOpen(false);
+    });
+  };
 
   if (!open) {
     return (
@@ -207,18 +204,15 @@ function HindsightMemorySection() {
 
   const [draft, setDraft] = useState("");
 
-  const onSearch = useCallback(
-    (event: React.FormEvent) => {
-      event.preventDefault();
-      submitQuery(draft);
-    },
-    [draft, submitQuery],
-  );
+  const onSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    submitQuery(draft);
+  };
 
-  const onClear = useCallback(() => {
+  const onClear = () => {
     setDraft("");
     clearQuery();
-  }, [clearQuery]);
+  };
 
   const unavailable = describeHindsightUnavailable(status, { enabled });
 

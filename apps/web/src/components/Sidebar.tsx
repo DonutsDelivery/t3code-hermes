@@ -98,7 +98,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { useParams, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 
 import { useRightPanelStore } from "../rightPanelStore";
 import {
@@ -167,11 +167,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { useThreadSearch } from "../state/queries";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../state/session";
-import {
-  buildThreadRouteParams,
-  resolveActiveThreadRouteRef,
-  resolveThreadRouteTarget,
-} from "../threadRoutes";
+import { buildThreadRouteParams, resolveActiveThreadRouteRef } from "../threadRoutes";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
@@ -289,6 +285,7 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../composerDraftStore";
+import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
 // Collapsed shelves share one empty list so a route change alone does not
@@ -764,14 +761,19 @@ function compactSidebarTimeLabel(label: string): string {
   return label.endsWith(" ago") ? label.slice(0, -4) : label;
 }
 
-function threadTimeLabel(thread: SidebarThreadSummary): string {
-  const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
-  return compactSidebarTimeLabel(formatRelativeTimeLabel(timestamp));
+// Subscribes to the minute tick itself, so only the label re-renders each
+// minute. The minute is passed as the clock so it is the formatter's input.
+function RelativeTimeLabel(props: { timestamp: string | null }) {
+  const nowMinute = useNowMinute();
+  return props.timestamp === null
+    ? null
+    : compactSidebarTimeLabel(
+        formatRelativeTimeLabel(props.timestamp, Date.parse(`${nowMinute}:00.000Z`)),
+      );
 }
 
-function settledTimeLabel(thread: SidebarThreadSummary): string {
-  const timestamp = resolveSettledThreadTimestamp(thread);
-  return timestamp === null ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(timestamp));
+function threadTimeTimestamp(thread: SidebarThreadSummary): string {
+  return thread.latestUserMessageAt ?? thread.updatedAt;
 }
 
 function JumpHintBadge(props: { label: string }) {
@@ -1058,18 +1060,25 @@ type SortableThreadRowBag = Pick<
 const SIDEBAR_SORTABLE_DRAG_DISABLED = { draggable: true } as const;
 const SIDEBAR_SORTABLE_DRAG_ENABLED = { draggable: false } as const;
 
-function SortableThreadRow(props: {
-  id: string;
-  disabled: boolean;
-  contextDrag: boolean;
-  environmentId: EnvironmentId;
-  children: (bag: SortableThreadRowBag) => ReactNode;
-}) {
-  const canOperateThread = useEnvironmentScope(props.environmentId, AuthOrchestrationOperateScope);
+// Takes the row's props rather than a render function: a closure from the
+// sidebar body is new on every sidebar render, which rebuilt the bag and
+// re-rendered every memoized row with it.
+function SortableThreadRow(
+  props: Omit<SidebarThreadRowProps, "sortable"> & {
+    sortableId: string;
+    sortableDisabled: boolean;
+    contextDrag: boolean;
+  },
+) {
+  const { sortableId, sortableDisabled, contextDrag, ...rowProps } = props;
+  const canOperateThread = useEnvironmentScope(
+    rowProps.thread.environmentId,
+    AuthOrchestrationOperateScope,
+  );
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: props.id,
+    id: sortableId,
     disabled:
-      props.disabled || !canOperateThread
+      sortableDisabled || !canOperateThread
         ? SIDEBAR_SORTABLE_DRAG_DISABLED
         : SIDEBAR_SORTABLE_DRAG_ENABLED,
     animateLayoutChanges: animateSidebarLayoutChanges,
@@ -1079,11 +1088,12 @@ function SortableThreadRow(props: {
   const bag = {
     listeners,
     setNodeRef,
-    transform: props.contextDrag ? null : transform,
-    transition: props.contextDrag && isDragging ? "transform 150ms ease-out" : transition,
-    isDragging: isDragging && !props.contextDrag,
+    transform: contextDrag ? null : transform,
+    transition: contextDrag && isDragging ? "transform 150ms ease-out" : transition,
+    isDragging: isDragging && !contextDrag,
   };
-  return props.children(bag);
+  // Keyed by variant so a card/slim switch remounts the row.
+  return <SidebarThreadRow key={rowProps.variant} {...rowProps} sortable={bag} />;
 }
 
 const draftSurfaceClassName = "bg-warning/4 hover:bg-warning/8";
@@ -1452,7 +1462,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   ),
 };
 
-const SidebarThreadRow = memo(function SidebarThreadRow(props: {
+type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
   variantAction: SidebarSweepAction;
@@ -1500,7 +1510,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
-}) {
+};
+
+const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     isRenaming,
     onCancelRename,
@@ -2085,9 +2097,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     </Tooltip>
                   ) : (
                     <span className="text-xs">
-                      {variantAction === "unsettle"
-                        ? settledTimeLabel(thread)
-                        : threadTimeLabel(thread)}
+                      <RelativeTimeLabel
+                        timestamp={
+                          variantAction === "unsettle"
+                            ? resolveSettledThreadTimestamp(thread)
+                            : threadTimeTimestamp(thread)
+                        }
+                      />
                     </span>
                   )}
                 </span>
@@ -2280,7 +2296,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                         </span>
                       )
                     ) : (
-                      threadTimeLabel(thread)
+                      <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
                     )}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
@@ -2564,7 +2580,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
                 />
               </span>
               <span className="w-8 shrink-0 text-right text-xs text-muted-foreground/55 tabular-nums">
-                {threadTimeLabel(thread)}
+                <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
               </span>
             </span>
             {props.searchMatch ? (
@@ -2698,10 +2714,7 @@ export default function Sidebar() {
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
   const acknowledgeWoke = useAcknowledgeThreadWoke();
-  const routeTarget = useParams({
-    strict: false,
-    select: (params) => resolveThreadRouteTarget(params),
-  });
+  const routeTarget = useThreadRouteTarget();
   const routeDraftThread = useComposerDraftStore((store) =>
     routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
   );
@@ -4699,10 +4712,9 @@ export default function Sidebar() {
                     )}
                   >
                     {(() => {
-                      const renderThreadRowInner = (
+                      const renderThreadRow = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
-                        sortable?: SortableThreadRowBag,
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -4711,8 +4723,16 @@ export default function Sidebar() {
                           section === "active" || section === "pinned" || section === "working";
                         const rowVariant = isCard ? "card" : "slim";
                         return (
-                          <SidebarThreadRow
-                            key={`${threadKey}:${rowVariant}`}
+                          <SortableThreadRow
+                            key={threadKey}
+                            sortableId={threadKey}
+                            contextDrag={isContextDrag}
+                            sortableDisabled={
+                              renamingThreadKey === threadKey ||
+                              section === "working" ||
+                              !draggableThreadKeys.has(threadKey) ||
+                              optimisticDrop !== null
+                            }
                             thread={thread}
                             variant={rowVariant}
                             variantAction={
@@ -4735,7 +4755,6 @@ export default function Sidebar() {
                                 .threadPinning === true
                             }
                             isPinned={thread.pinnedAt != null}
-                            sortable={sortable}
                             dropVerb={
                               dragState?.activeKey === threadKey
                                 ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
@@ -4801,30 +4820,6 @@ export default function Sidebar() {
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
                           />
-                        );
-                      };
-                      const renderThreadRow = (
-                        thread: EnvironmentThreadShell,
-                        section: SidebarSection,
-                      ) => {
-                        const threadKey = scopedThreadKey(
-                          scopeThreadRef(thread.environmentId, thread.id),
-                        );
-                        return (
-                          <SortableThreadRow
-                            key={threadKey}
-                            id={threadKey}
-                            contextDrag={isContextDrag}
-                            environmentId={thread.environmentId}
-                            disabled={
-                              renamingThreadKey === threadKey ||
-                              section === "working" ||
-                              !draggableThreadKeys.has(threadKey) ||
-                              optimisticDrop !== null
-                            }
-                          >
-                            {(bag) => renderThreadRowInner(thread, section, bag)}
-                          </SortableThreadRow>
                         );
                       };
                       const from = isContextDrag ? null : (dragState?.activeSection ?? null);
