@@ -2445,7 +2445,7 @@ function UserMessageIntentMarker({
   );
 }
 
-export function resolvePreviewAnnotationImage(input: {
+function resolvePreviewAnnotationImage(input: {
   record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
   recordsById: ReadonlyMap<string, ComposerContextRecord>;
   userImages: ReadonlyArray<ChatImageAttachment>;
