@@ -13,7 +13,7 @@
  */
 import { HERMES_NEW_TASK_TEMPLATE } from "@t3tools/client-runtime/state/hermes-cron";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { requestComposerTemplate } from "../../composerTemplateBus";
 import { cn } from "../../lib/utils";
@@ -55,10 +55,10 @@ export function HermesPanel({ target = EMPTY_HERMES_SEARCH }: { readonly target?
     if (environmentId !== null) markHermesTasksSeen(environmentId);
   }, [environmentId]);
 
-  const handleNewTask = useCallback(() => {
+  const handleNewTask = () => {
     requestComposerTemplate(HERMES_NEW_TASK_TEMPLATE);
     void navigate({ to: "/" });
-  }, [navigate]);
+  };
 
   return (
     <SidebarInset className="isolate h-dvh min-h-0 overflow-hidden">

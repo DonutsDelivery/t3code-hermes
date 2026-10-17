@@ -8,7 +8,7 @@
  * @module HermesRunsSettings
  */
 import type { EnvironmentId, HermesRunSource, ProjectId } from "@t3tools/contracts";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useProjects } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
@@ -61,23 +61,17 @@ function HermesRunsControls({ environmentId }: { readonly environmentId: Environ
     label: "save Hermes run source",
   });
   const allProjects = useProjects();
-  const projects = useMemo(
-    () => allProjects.filter((project) => project.environmentId === environmentId),
-    [allProjects, environmentId],
-  );
+  const projects = allProjects.filter((project) => project.environmentId === environmentId);
   const [pending, setPending] = useState<string | null>(null);
 
   const save = async (source: HermesRunSource, projectId: ProjectId | null) => {
     setPending(`${source.profile}:${source.sourceKey}`);
-    try {
-      const result = await setSource({
-        environmentId,
-        input: { profile: source.profile, sourceKey: source.sourceKey, projectId },
-      });
-      if (result._tag === "Success") query.refresh();
-    } finally {
-      setPending(null);
-    }
+    const result = await setSource({
+      environmentId,
+      input: { profile: source.profile, sourceKey: source.sourceKey, projectId },
+    });
+    if (result._tag === "Success") query.refresh();
+    setPending(null);
   };
 
   const result = query.data;

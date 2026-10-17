@@ -7,7 +7,6 @@ import {
 import { ProviderDriverKind } from "@t3tools/contracts";
 import type { EnvironmentId, HermesCronJobId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo } from "react";
 
 import { deriveProviderInstanceEntries } from "../providerInstances";
 import { environmentPresentations } from "./presentation";
@@ -107,23 +106,17 @@ export function useHermesCron(targetEnvironmentId?: EnvironmentId | null) {
   const setEnabledCommand = useAtomCommand(serverEnvironment.hermesCronSetEnabled);
   const setMutedCommand = useAtomCommand(serverEnvironment.hermesCronSetMuted);
 
-  const setEnabled = useCallback(
-    (jobId: HermesCronJobId, enabled: boolean) => {
-      if (environmentId === null) return;
-      void setEnabledCommand({ environmentId, input: { jobId, enabled } });
-    },
-    [environmentId, setEnabledCommand],
-  );
+  const setEnabled = (jobId: HermesCronJobId, enabled: boolean) => {
+    if (environmentId === null) return;
+    void setEnabledCommand({ environmentId, input: { jobId, enabled } });
+  };
 
-  const setMuted = useCallback(
-    (jobId: HermesCronJobId, muted: boolean) => {
-      if (environmentId === null) return;
-      void setMutedCommand({ environmentId, input: { jobId, muted } });
-    },
-    [environmentId, setMutedCommand],
-  );
+  const setMuted = (jobId: HermesCronJobId, muted: boolean) => {
+    if (environmentId === null) return;
+    void setMutedCommand({ environmentId, input: { jobId, muted } });
+  };
 
-  const jobs = useMemo(() => state.view.snapshot?.jobs ?? [], [state.view.snapshot]);
+  const jobs = state.view.snapshot?.jobs ?? [];
 
   return { ...state, jobs, setEnabled, setMuted };
 }

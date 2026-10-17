@@ -6,7 +6,7 @@ import {
   type HermesSkillOriginFilter,
   type HermesSkillSelection,
 } from "@t3tools/client-runtime/state/hermes-skills";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useHermesEnvironmentId } from "./hermesCron";
 import { useEnvironmentQuery } from "./query";
@@ -32,10 +32,7 @@ export function useHermesSkills() {
           input: hermesSkillDetailInput(selectedSkill.path, snapshot),
         }),
   );
-  const list = useMemo(
-    () => selectHermesSkills(snapshot?.skills ?? [], search, origin),
-    [snapshot, search, origin],
-  );
+  const list = selectHermesSkills(snapshot?.skills ?? [], search, origin);
 
   return {
     ...list,

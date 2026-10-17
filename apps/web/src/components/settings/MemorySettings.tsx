@@ -79,19 +79,17 @@ function MemorySettingsControls({ environmentId }: { readonly environmentId: Env
 
   const save = async (patch: HindsightPatch) => {
     setSaving(true);
-    try {
-      const saveResult = await updateSettings({
-        environmentId,
-        input: { patch: { integrations: { hindsight: patch } } },
-      });
-      if (saveResult._tag === "Success") {
-        setApiKeyDraft("");
-        // The server resolves the connection on the next read; ask it now.
-        banksQuery.refresh();
-      }
-    } finally {
-      setSaving(false);
+    // Atom commands settle into a result instead of rejecting, so cleanup follows the await.
+    const saveResult = await updateSettings({
+      environmentId,
+      input: { patch: { integrations: { hindsight: patch } } },
+    });
+    if (saveResult._tag === "Success") {
+      setApiKeyDraft("");
+      // The server resolves the connection on the next read; ask it now.
+      banksQuery.refresh();
     }
+    setSaving(false);
   };
 
   const fromHermes =
