@@ -1,12 +1,11 @@
-// @vitest-environment jsdom
 import {
   EnvironmentId,
   HermesCronJobId,
   type HermesCronJob,
   type HermesCronRun,
 } from "@t3tools/contracts";
-import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { act, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({ getOutput: vi.fn(), jobs: [] as HermesCronJob[] }));
@@ -50,10 +49,24 @@ const run: HermesCronRun = {
     error: null,
   },
 };
-let renderer: ReactTestRenderer | undefined;
+let root: Root;
+let container: HTMLDivElement;
+
+function render(element: ReactElement) {
+  return act(async () => root.render(element));
+}
+
+function click(label: string) {
+  const element = container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+  expect(element).not.toBeNull();
+  return act(async () => element!.click());
+}
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
   state.getOutput.mockReset().mockResolvedValue({
     _tag: "Success",
     value: { content: "Full report", truncated: false, source: "session" },
@@ -77,59 +90,47 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => renderer?.unmount());
-  renderer = undefined;
+  await act(async () => root.unmount());
+  container.remove();
   vi.unstubAllGlobals();
 });
 
 it("fetches full output only when a run is expanded, not when task history opens", async () => {
-  await act(async () => {
-    renderer = create(<HermesTasksTab onNewTask={vi.fn()} target={{ environmentId }} />);
-  });
+  await render(<HermesTasksTab onNewTask={vi.fn()} target={{ environmentId }} />);
   expect(state.getOutput).not.toHaveBeenCalled();
-  await act(async () =>
-    renderer!.root.findByProps({ "aria-label": "Expand task Report" }).props.onClick(),
-  );
+  await click("Expand task Report");
   expect(state.getOutput).not.toHaveBeenCalled();
-  await act(async () =>
-    renderer!.root.findByProps({ "aria-label": "Run run: completed" }).props.onClick(),
-  );
+  await click("Run run: completed");
   expect(state.getOutput).toHaveBeenCalledExactlyOnceWith({
     environmentId,
     input: { jobId: run.jobId, runId: "run" },
   });
-  expect(JSON.stringify(renderer!.toJSON())).toContain("Full report");
-  await act(async () =>
-    renderer!.root.findByProps({ "aria-label": "Run run: completed" }).props.onClick(),
-  );
-  expect(JSON.stringify(renderer!.toJSON())).not.toContain("Full report");
+  expect(container.textContent).toContain("Full report");
+  await click("Run run: completed");
+  expect(container.textContent).not.toContain("Full report");
   expect(state.getOutput).toHaveBeenCalledTimes(1);
 });
 
 it("opens the targeted task and run immediately on its owning environment", async () => {
-  await act(async () => {
-    renderer = create(
-      <HermesTasksTab
-        onNewTask={vi.fn()}
-        target={{ environmentId, jobId: run.jobId, runId: "run" }}
-      />,
-    );
-  });
+  await render(
+    <HermesTasksTab
+      onNewTask={vi.fn()}
+      target={{ environmentId, jobId: run.jobId, runId: "run" }}
+    />,
+  );
   expect(state.getOutput).toHaveBeenCalledExactlyOnceWith({
     environmentId,
     input: { jobId: run.jobId, runId: "run" },
   });
-  expect(JSON.stringify(renderer!.toJSON())).toContain("Full report");
+  expect(container.textContent).toContain("Full report");
 });
 
 it("does not fetch unavailable output or claim unrecorded session output was delivered", async () => {
   const unavailable = { ...run, delivery: { ...run.delivery!, contentAvailable: false } };
-  await act(async () => {
-    renderer = create(<HermesRunRow run={unavailable} environmentId={environmentId} targeted />);
-  });
+  await render(<HermesRunRow run={unavailable} environmentId={environmentId} targeted />);
   expect(state.getOutput).not.toHaveBeenCalled();
-  expect(JSON.stringify(renderer!.toJSON())).toContain("No recorded output is available");
-  expect(JSON.stringify(renderer!.toJSON())).toContain("not recorded");
+  expect(container.textContent).toContain("No recorded output is available");
+  expect(container.textContent).toContain("not recorded");
 });
 
 it("offers retry after a failed request and reports truncated full output", async () => {
@@ -137,15 +138,14 @@ it("offers retry after a failed request and reports truncated full output", asyn
     _tag: "Success",
     value: { content: "Partial report", truncated: true, source: "delivery" },
   });
-  await act(async () => {
-    renderer = create(<HermesRunRow run={run} environmentId={environmentId} targeted />);
-  });
-  expect(JSON.stringify(renderer!.toJSON())).toContain("Could not load");
-  const retry = renderer!.root
-    .findAllByType("button")
-    .find((button) => button.children.includes("Retry"))!;
-  await act(async () => retry.props.onClick());
+  await render(<HermesRunRow run={run} environmentId={environmentId} targeted />);
+  expect(container.textContent).toContain("Could not load");
+  const retry = Array.from(container.querySelectorAll("button")).find(
+    (button) => button.textContent === "Retry",
+  );
+  expect(retry).toBeDefined();
+  await act(async () => retry!.click());
   expect(state.getOutput).toHaveBeenCalledTimes(2);
-  expect(JSON.stringify(renderer!.toJSON())).toContain("Partial report");
-  expect(JSON.stringify(renderer!.toJSON())).toContain("Output truncated to the display limit.");
+  expect(container.textContent).toContain("Partial report");
+  expect(container.textContent).toContain("Output truncated to the display limit.");
 });
