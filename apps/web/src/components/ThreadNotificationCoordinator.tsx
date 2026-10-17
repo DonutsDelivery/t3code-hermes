@@ -18,7 +18,7 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
 import { useEnvironmentIds } from "../state/environments";
@@ -43,7 +43,7 @@ export function ThreadNotificationCoordinator() {
   const pending = useRef(new Map<string, PendingAttention>());
   const statusDots = useClientSettings((settings) => settings.tabStatusDots);
   const statusDotsRef = useRef(statusDots);
-  const syncBadge = useCallback((blink = false) => {
+  const syncBadge = (blink = false) => {
     if (!statusDotsRef.current) {
       setNotificationBadge(pending.current.size);
       return;
@@ -53,28 +53,25 @@ export function ThreadNotificationCoordinator() {
       if (ATTENTION_SEVERITY[entry.kind] > ATTENTION_SEVERITY[kind]) kind = entry.kind;
     }
     setNotificationBadge(pending.current.size, { kind, blink });
-  }, []);
+  };
   // Flipping the setting redraws any badge already showing, without a blink.
   useEffect(() => {
     if (statusDotsRef.current === statusDots) return;
     statusDotsRef.current = statusDots;
     if (pending.current.size > 0) syncBadge();
   }, [statusDots, syncBadge]);
-  const onAttention = useCallback<OnAttention>(
-    (environmentId, tag, kind, notification) => {
-      pending.current.get(tag)?.notification?.close();
-      pending.current.set(tag, { environmentId, kind, notification });
-      syncBadge(kind !== "completion");
-    },
-    [syncBadge],
-  );
+  const onAttention: OnAttention = (environmentId, tag, kind, notification) => {
+    pending.current.get(tag)?.notification?.close();
+    pending.current.set(tag, { environmentId, kind, notification });
+    syncBadge(kind !== "completion");
+  };
 
   useEffect(() => {
     const activeIds = new Set(environmentIds);
     const count = pending.current.size;
-    for (const [tag, { environmentId, notification }] of pending.current) {
-      if (activeIds.has(environmentId)) continue;
-      notification?.close();
+    for (const [tag, entry] of pending.current) {
+      if (activeIds.has(entry.environmentId)) continue;
+      entry.notification?.close();
       pending.current.delete(tag);
     }
     if (count !== pending.current.size) syncBadge();
