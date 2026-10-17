@@ -723,6 +723,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "paperclip",
+    title: "Paperclip",
+    to: "/settings/integrations",
+    searchTerms: ["paperclip agents company org chart issues runs board viewer integration"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "paperclip-server",
+    title: "Paperclip server",
+    to: "/settings/integrations",
+    targetId: "paperclip",
+    searchTerms: ["paperclip url api key board token company connection"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "memory-server",
     title: "Hindsight server",
     to: "/settings/integrations",

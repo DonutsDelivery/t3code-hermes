@@ -183,6 +183,10 @@
       "types": "./src/state/hindsight.ts",
       "default": "./src/state/hindsight.ts"
     },
+    "./state/paperclip": {
+      "types": "./src/state/paperclip.ts",
+      "default": "./src/state/paperclip.ts"
+    },
     "./state/git": {
       "types": "./src/state/git.ts",
       "default": "./src/state/git.ts"

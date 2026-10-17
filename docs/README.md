@@ -19,6 +19,7 @@
 - [Usage and limits](./user/usage.md)
 - [Watch Hermes scheduled tasks](./user/hermes-tasks.md)
 - [Browse Hermes memories](./user/hermes-memory.md)
+- [See your Paperclip company](./user/paperclip.md)
 - [Browse Hermes skills](./user/hermes-skills.md)
 - [Configure Hermes reasoning](./user/hermes-reasoning.md)
 - [Use fast mode with Hermes](./user/hermes-fast-mode.md)

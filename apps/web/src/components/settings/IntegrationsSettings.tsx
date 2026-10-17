@@ -5,6 +5,7 @@ import { ScopedSwitch } from "./ScopedSwitch";
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
 import { HermesRunsSettingsSection } from "./HermesRunsSettings";
 import { MemorySettingsSection } from "./MemorySettings";
+import { PaperclipSettingsSection } from "./PaperclipSettings";
 import {
   AuthSettingsWriteScope,
   BrowserImportFailureReason,
@@ -1503,6 +1504,7 @@ export function IntegrationsSettingsPanel() {
       </SettingsSection>
       <DeviceIntegrationSettings />
       <MemorySettingsSection />
+      <PaperclipSettingsSection />
       <HermesRunsSettingsSection />
     </SettingsPageContainer>
   );

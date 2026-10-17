@@ -333,6 +333,12 @@ export function summarizeT3ToolCalls(
     case "environment-update":
       label = phrase("Updated", "update", `environment preferences ${times}`);
       break;
+    case "paperclip-read":
+      label = phrase("Checked", "check", `the Paperclip company ${times}`);
+      break;
+    case "paperclip-connect":
+      label = phrase("Connected", "connect", `Paperclip ${times}`);
+      break;
     case "attachment-prepare":
       label = phrase(
         "Prepared",

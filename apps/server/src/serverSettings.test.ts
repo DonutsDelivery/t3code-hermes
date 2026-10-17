@@ -1705,6 +1705,35 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       );
     }).pipe(Effect.provide(layerServerSettings())),
   );
+  it.effect("keeps the Paperclip API key in the secret store and redacts it for clients", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const secrets = yield* ServerSecretStore.ServerSecretStore;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+
+      const saved = yield* serverSettings.updateSettings({
+        integrations: {
+          paperclip: { enabled: true, baseUrl: "http://127.0.0.1:3100", apiKey: "pcp-secret" },
+        },
+      });
+      assert.equal(saved.integrations.paperclip.apiKey, "pcp-secret");
+      assert.notInclude(yield* fileSystem.readFileString(serverConfig.settingsPath), "pcp-secret");
+      // Saving Paperclip leaves Hindsight's defaults alone.
+      assert.equal(saved.integrations.hindsight.enabled, true);
+
+      const forClient = ServerSettingsModule.redactServerSettingsForClient(saved);
+      assert.notInclude(forClient.integrations.paperclip.apiKey ?? "", "pcp-secret");
+      assert.isAbove((forClient.integrations.paperclip.apiKey ?? "").length, 0);
+
+      const cleared = yield* serverSettings.updateSettings({
+        integrations: { paperclip: { apiKey: "" } },
+      });
+      assert.equal(cleared.integrations.paperclip.apiKey, undefined);
+      assert.equal(cleared.integrations.paperclip.enabled, true);
+      assert.isTrue(Option.isNone(yield* secrets.get("paperclip-api-key")));
+    }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
+  );
   it.effect("keeps the Hindsight API key in the secret store and redacts it for clients", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

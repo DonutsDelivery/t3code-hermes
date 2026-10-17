@@ -104,6 +104,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.hindsightReflect]: "server",
   [WS_METHODS.hindsightSubscribeAgentMemory]: "server",
   [WS_METHODS.hindsightApplyAgentMemory]: "server",
+  [WS_METHODS.paperclipOverview]: "server",
   [WS_METHODS.serverRefreshUsageRates]: "server",
   [WS_METHODS.serverSignalProcess]: "server",
   [WS_METHODS.serverReportClientActivity]: "server",

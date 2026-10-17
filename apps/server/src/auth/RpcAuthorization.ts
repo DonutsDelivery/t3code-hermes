@@ -135,6 +135,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.hindsightSubscribeAgentMemory]: AuthOrchestrationReadScope,
   // Rewrites the agents' own config on the host, like a provider update.
   [WS_METHODS.hindsightApplyAgentMemory]: AuthOrchestrationOperateScope,
+  [WS_METHODS.paperclipOverview]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshUsageRates]: AuthDiagnosticsReadScope,
   [WS_METHODS.serverSignalProcess]: AuthEnvironmentMaintainScope,
   [WS_METHODS.serverReportClientActivity]: AuthOrchestrationReadScope,

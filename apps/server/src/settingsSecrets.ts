@@ -33,6 +33,7 @@ const providerSecretFields = new Map([
 const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 /** Store key the fork used before secrets were schema-declared; keep it so saved keys survive. */
 const HINDSIGHT_API_KEY_SECRET_NAME = "hindsight-api-key";
+const PAPERCLIP_API_KEY_SECRET_NAME = "paperclip-api-key";
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -144,7 +145,7 @@ export function mapSettingsSecrets(
     ]),
   ) as ServerSettings["usageLimitSources"];
 
-  // Hermes fork: the Hindsight key is optional, so a cleared or unset key drops the field.
+  // Hermes fork: the Hindsight and Paperclip keys are optional, so a cleared or unset key drops the field.
   const { apiKey: hindsightApiKey, ...hindsight } = settings.integrations.hindsight;
   const hindsightResult =
     hindsightApiKey === undefined
@@ -162,9 +163,27 @@ export function mapSettingsSecrets(
       : hindsightResult.redacted
         ? SECRET_REDACTED
         : hindsightResult.value;
+  const { apiKey: paperclipApiKey, ...paperclip } = settings.integrations.paperclip;
+  const paperclipResult =
+    paperclipApiKey === undefined
+      ? undefined
+      : map({
+          secretName: PAPERCLIP_API_KEY_SECRET_NAME,
+          kind: "field",
+          value: paperclipApiKey,
+          redacted: paperclipApiKey === SECRET_REDACTED,
+          sensitive: true,
+        });
+  const paperclipKey =
+    paperclipResult === undefined
+      ? ""
+      : paperclipResult.redacted
+        ? SECRET_REDACTED
+        : paperclipResult.value;
   const integrations = {
     ...settings.integrations,
     hindsight: hindsightKey.length > 0 ? { ...hindsight, apiKey: hindsightKey } : hindsight,
+    paperclip: paperclipKey.length > 0 ? { ...paperclip, apiKey: paperclipKey } : paperclip,
   };
 
   return { ...settings, providerInstances, sourceControlHosts, usageLimitSources, integrations };

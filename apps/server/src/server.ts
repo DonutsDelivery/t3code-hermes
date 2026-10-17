@@ -173,6 +173,7 @@ import * as HermesRunService from "./hermes/HermesRunService.ts";
 import * as HermesPatchService from "./hermes/HermesPatchService.ts";
 import * as HindsightAgentMemory from "./integrations/hindsight/HindsightAgentMemory.ts";
 import * as HindsightService from "./integrations/hindsight/HindsightService.ts";
+import * as PaperclipService from "./integrations/paperclip/PaperclipService.ts";
 import * as AntigravityUsage from "./provider/Drivers/AntigravityUsage.ts";
 import * as CursorAccountReader from "@t3tools/provider-cursor/server/CursorAccountReader";
 import * as CursorKeychain from "@t3tools/provider-cursor/server/CursorKeychain";
@@ -288,6 +289,7 @@ const layerHermesPatch = HermesPatchService.layer.pipe(Layer.provide(layerServer
 // HttpClient comes from the outermost FetchHttpClient layer, the same way the
 // provider maintenance checks get theirs.
 const layerHindsight = HindsightService.layer.pipe(Layer.provide(layerServerSettings));
+const layerPaperclip = PaperclipService.layer.pipe(Layer.provide(layerServerSettings));
 const layerHindsightAgentMemory = HindsightAgentMemory.layer.pipe(
   Layer.provide(layerHindsight),
   Layer.provide(layerServerSettings),
@@ -700,6 +702,7 @@ const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
   Layer.provideMerge(layerHermesPatch),
   Layer.provideMerge(layerHindsight),
   Layer.provideMerge(layerHindsightAgentMemory),
+  Layer.provideMerge(layerPaperclip),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(AnalyticsService.layer),
   Layer.provideMerge(ExternalLauncher.layer),

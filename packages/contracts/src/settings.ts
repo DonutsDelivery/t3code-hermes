@@ -848,8 +848,32 @@ export type HindsightSettings = typeof HindsightSettings.Type;
  * integration is a service an agent's work leans on and that T3 Code surfaces
  * directly.
  */
+/**
+ * Connection to a [Paperclip](https://github.com/paperclipai/paperclip) agent
+ * company, which backs the read-only Paperclip surface of the right panel.
+ *
+ * Only the server talks to Paperclip, so a LAN or tailnet address keeps
+ * working for clients on a phone or behind a tunnel. Use a board API key
+ * minted by a Paperclip user with the company's `viewer` role: Paperclip
+ * itself then refuses every write the key could attempt.
+ *
+ * `apiKey` lives in the secret store and reaches clients only as a redaction
+ * marker, like Hindsight's.
+ */
+export const PaperclipSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Paperclip's address, with or without the trailing `/api`. */
+  baseUrl: Schema.optionalKey(TrimmedString),
+  /** Board API key, sent as `Authorization: Bearer`. */
+  apiKey: Schema.optionalKey(TrimmedString),
+  /** Which company to show. Empty uses the first company the key can see. */
+  companyId: Schema.optionalKey(TrimmedString),
+});
+export type PaperclipSettings = typeof PaperclipSettings.Type;
+
 export const IntegrationSettings = Schema.Struct({
   hindsight: HindsightSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  paperclip: PaperclipSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type IntegrationSettings = typeof IntegrationSettings.Type;
 
@@ -1548,6 +1572,14 @@ export const ServerSettingsPatch = Schema.Struct({
           apiKey: Schema.optionalKey(TrimmedString),
           defaultBank: Schema.optionalKey(TrimmedString),
           agentMemory: Schema.optionalKey(Schema.Boolean),
+        }),
+      ),
+      paperclip: Schema.optionalKey(
+        Schema.Struct({
+          enabled: Schema.optionalKey(Schema.Boolean),
+          baseUrl: Schema.optionalKey(TrimmedString),
+          apiKey: Schema.optionalKey(TrimmedString),
+          companyId: Schema.optionalKey(TrimmedString),
         }),
       ),
     }),

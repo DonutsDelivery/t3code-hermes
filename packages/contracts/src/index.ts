@@ -37,6 +37,7 @@ export * from "./hermesMemory.ts";
 export * from "./hermesRuns.ts";
 export * from "./hermesPatches.ts";
 export * from "./hindsight.ts";
+export * from "./paperclip.ts";
 export * from "./projectClone.ts";
 export * from "./pullRequest.ts";
 export * from "./pullRequestReviewGuide.ts";

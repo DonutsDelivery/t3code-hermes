@@ -1219,6 +1219,17 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.hermesGatewayRestart,
     }),
     /**
+     * The configured Paperclip company. A query rather than a subscription:
+     * Paperclip has no change feed this server listens to, so the surface asks
+     * when it opens and when the user refreshes. Briefly cached so switching
+     * tabs back to it does not refetch.
+     */
+    paperclipOverview: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:paperclip-overview",
+      tag: WS_METHODS.paperclipOverview,
+      staleTimeMs: 15_000,
+    }),
+    /**
      * Hindsight memory. Queries rather than a subscription: Hindsight has no
      * change feed, and the panel only wants an answer when the user asks a
      * question. Banks are cached briefly because the picker re-reads them on

@@ -235,6 +235,7 @@ import * as HermesRunService from "./hermes/HermesRunService.ts";
 import * as HermesPatchService from "./hermes/HermesPatchService.ts";
 import * as HindsightAgentMemory from "./integrations/hindsight/HindsightAgentMemory.ts";
 import * as HindsightService from "./integrations/hindsight/HindsightService.ts";
+import * as PaperclipService from "./integrations/paperclip/PaperclipService.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageService from "./usage/UsageService.ts";
@@ -3131,6 +3132,7 @@ const layerHermesWsRpc = HermesServerWsRpcGroup.toLayer(
     const hermesPatches = yield* HermesPatchService.HermesPatchService;
     const hindsight = yield* HindsightService.HindsightService;
     const hindsightAgentMemory = yield* HindsightAgentMemory.HindsightAgentMemory;
+    const paperclip = yield* PaperclipService.PaperclipService;
     return HermesServerWsRpcGroup.of({
       [ORCHESTRATION_V2_WS_METHODS.subscribeRunThroughput]: (input) =>
         Stream.unwrap(
@@ -3161,6 +3163,7 @@ const layerHermesWsRpc = HermesServerWsRpcGroup.toLayer(
       [WS_METHODS.hindsightReflect]: (input) => hindsight.reflect(input),
       [WS_METHODS.hindsightSubscribeAgentMemory]: (_input) => hindsightAgentMemory.changes,
       [WS_METHODS.hindsightApplyAgentMemory]: (_input) => hindsightAgentMemory.apply,
+      [WS_METHODS.paperclipOverview]: (input) => paperclip.overview(input),
       [WS_METHODS.subscribeHermesSkills]: (_input) => Stream.unwrap(hermesSkills.subscribe),
       [WS_METHODS.subscribeHermesMemory]: () => Stream.unwrap(hermesMemory.subscribe),
       [WS_METHODS.subscribeHermesCron]: (_input) => Stream.unwrap(hermesCron.subscribe),

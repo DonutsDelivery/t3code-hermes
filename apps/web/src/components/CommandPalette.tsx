@@ -74,6 +74,7 @@ import {
   PaletteIcon,
   RotateCcwIcon,
   SettingsIcon,
+  PaperclipIcon,
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
@@ -1785,6 +1786,23 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+  }
+
+  if (
+    activeThread !== null &&
+    activeThreadServerConfig?.settings.integrations.paperclip.enabled === true
+  ) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:open-paperclip",
+      searchTerms: ["paperclip", "agents", "company", "org", "issues", "runs"],
+      title: "Show Paperclip",
+      icon: <PaperclipIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "paperclip");
+      },
+    });
   }
 
   if (activeThread !== null) {

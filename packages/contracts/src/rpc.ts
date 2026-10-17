@@ -375,6 +375,7 @@ import {
   HindsightStatsInput,
   HindsightStatsResult,
 } from "./hindsight.ts";
+import { PaperclipOverviewInput, PaperclipOverviewResult } from "./paperclip.ts";
 import {
   UsageLimitSourceError,
   ProviderConsumeResetCreditInput,
@@ -580,6 +581,7 @@ export const WS_METHODS = {
   hindsightReflect: "hindsight.reflect",
   hindsightSubscribeAgentMemory: "hindsight.subscribeAgentMemory",
   hindsightApplyAgentMemory: "hindsight.applyAgentMemory",
+  paperclipOverview: "paperclip.overview",
   serverRefreshUsageRates: "server.refreshUsageRates",
 
   scheduledTasksList: "scheduledTasks.list",
@@ -1122,6 +1124,13 @@ const WsHindsightSubscribeAgentMemoryRpc = Rpc.make(WS_METHODS.hindsightSubscrib
 const WsHindsightApplyAgentMemoryRpc = Rpc.make(WS_METHODS.hindsightApplyAgentMemory, {
   payload: HindsightAgentMemoryInput,
   success: HindsightAgentMemoryState,
+  error: EnvironmentAuthorizationError,
+});
+
+/** The configured Paperclip company at a glance. Never fails for an unreachable Paperclip. */
+const WsPaperclipOverviewRpc = Rpc.make(WS_METHODS.paperclipOverview, {
+  payload: PaperclipOverviewInput,
+  success: PaperclipOverviewResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -2102,7 +2111,7 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 /**
- * Fork: the Hermes, Hindsight, and run-throughput RPCs. They are a group of their own so
+ * Fork: the Hermes, Hindsight, Paperclip, and run-throughput RPCs. They are a group of their own so
  * the server implements them in a separate handler layer: one handler map for every RPC
  * exceeds TypeScript's instantiation limit (TS2589) and widens the server's types to `any`.
  */
@@ -2132,6 +2141,7 @@ export const HermesWsRpcGroup = RpcGroup.make(
   WsHindsightReflectRpc,
   WsHindsightSubscribeAgentMemoryRpc,
   WsHindsightApplyAgentMemoryRpc,
+  WsPaperclipOverviewRpc,
   WsSubscribeHermesCronRpc,
   WsOrchestrationV2SubscribeRunThroughputRpc,
 ).middleware(RpcScopeAuthorization);
