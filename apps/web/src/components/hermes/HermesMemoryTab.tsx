@@ -9,7 +9,12 @@ import {
   HINDSIGHT_PATHWAY_LABELS,
   HINDSIGHT_STATS_PENDING_LABEL,
 } from "@t3tools/client-runtime/state/hindsight";
-import type { HindsightBankId, HindsightBankStats, HindsightMemory } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  HindsightBankId,
+  HindsightBankStats,
+  HindsightMemory,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { PlugZapIcon, RefreshCwIcon, SettingsIcon, SparklesIcon, XIcon } from "lucide-react";
 import { useState } from "react";
@@ -158,22 +163,30 @@ function RetainNote({
   );
 }
 
-export function HermesMemoryTab() {
+export function HermesMemoryTab({
+  environmentId,
+}: {
+  readonly environmentId: EnvironmentId | null;
+}) {
   return (
     <div className="flex flex-col gap-6">
-      <HermesNativeMemorySection />
+      <HermesNativeMemorySection environmentId={environmentId} />
       <section
         aria-label="Hindsight memory"
         className="flex flex-col gap-3 border-t border-border/60 pt-4"
       >
         <h2 className="text-sm font-semibold">Hindsight</h2>
-        <HindsightMemorySection />
+        <HindsightMemorySection environmentId={environmentId} />
       </section>
     </div>
   );
 }
 
-function HindsightMemorySection() {
+function HindsightMemorySection({
+  environmentId,
+}: {
+  readonly environmentId: EnvironmentId | null;
+}) {
   const {
     status,
     banks,
@@ -198,8 +211,7 @@ function HindsightMemorySection() {
     reflect,
     dismissReflection,
     enabled,
-    environmentId,
-  } = useHindsightMemory();
+  } = useHindsightMemory(environmentId);
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState("");

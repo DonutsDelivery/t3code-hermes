@@ -6,14 +6,13 @@ import {
   type HermesSkillOriginFilter,
   type HermesSkillSelection,
 } from "@t3tools/client-runtime/state/hermes-skills";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
 
-import { useHermesEnvironmentId } from "./hermesCron";
 import { useEnvironmentQuery } from "./query";
 import { serverEnvironment } from "./server";
 
-export function useHermesSkills() {
-  const environmentId = useHermesEnvironmentId();
+export function useHermesSkills(environmentId: EnvironmentId | null) {
   const [search, setSearch] = useState("");
   const [origin, setOrigin] = useState<HermesSkillOriginFilter>("all");
   const [selection, setSelection] = useState<HermesSkillSelection | null>(null);

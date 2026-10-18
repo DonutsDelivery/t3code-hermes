@@ -18,20 +18,14 @@ import { useAtomCommand } from "./use-atom-command";
 const HERMES_DRIVER_KIND = ProviderDriverKind.make("hermes");
 
 /**
- * The environment whose Hermes the panel talks to, or `null` when no connected
- * environment has Hermes enabled.
+ * Every connected environment with Hermes enabled, primary first.
  *
  * Hermes is a built-in driver, so every environment reports a snapshot for it
- * — disabled by default. Matching on presence alone would always pick the
- * primary environment and never reach the remote box actually running Hermes.
- *
- * Hermes usually lives on exactly one machine — the always-on box — which is
- * frequently not the environment a browser opened first. Resolving across every
- * connected environment (primary first, so a local Hermes still wins) is what
- * keeps the panel reachable from a laptop pointed at a remote host, matching
- * how mobile already picks its environment.
+ * — disabled by default. Matching on presence alone would list every
+ * environment and default to the primary one, never the remote box actually
+ * running Hermes.
  */
-const hermesEnvironmentIdAtom = Atom.make((get): EnvironmentId | null => {
+const hermesEnvironmentIdsAtom = Atom.make((get): ReadonlyArray<EnvironmentId> => {
   const primaryId = get(primaryEnvironmentIdAtom);
   const candidates: EnvironmentId[] = [];
   for (const [environmentId] of get(environmentPresentations.presentationsAtom)) {
@@ -40,19 +34,28 @@ const hermesEnvironmentIdAtom = Atom.make((get): EnvironmentId | null => {
   const ordered =
     primaryId === null ? candidates : [primaryId, ...candidates.filter((id) => id !== primaryId)];
 
-  for (const environmentId of ordered) {
+  return ordered.filter((environmentId) => {
     const providers = get(serverEnvironment.configValueAtom(environmentId))?.providers;
-    if (
+    return (
       providers !== undefined &&
       deriveProviderInstanceEntries(providers).some(
         (entry) => entry.driverKind === HERMES_DRIVER_KIND && entry.enabled,
       )
-    ) {
-      return environmentId;
-    }
-  }
-  return null;
-}).pipe(Atom.withLabel("web-hermes-environment-id"));
+    );
+  });
+}).pipe(Atom.withLabel("web-hermes-environment-ids"));
+
+/**
+ * The environment the Hermes panel opens on and the sidebar watches, or `null`
+ * when no connected environment has Hermes enabled.
+ *
+ * Hermes often lives on an always-on box that is not the environment a browser
+ * opened first, so this resolves across every connected environment (primary
+ * first, so a local Hermes still wins).
+ */
+const hermesEnvironmentIdAtom = Atom.make(
+  (get): EnvironmentId | null => get(hermesEnvironmentIdsAtom)[0] ?? null,
+).pipe(Atom.withLabel("web-hermes-environment-id"));
 
 /**
  * Whether any connected environment has Hermes enabled.
@@ -62,6 +65,10 @@ const hermesEnvironmentIdAtom = Atom.make((get): EnvironmentId | null => {
  */
 export function useHermesEnvironmentId(): EnvironmentId | null {
   return useAtomValue(hermesEnvironmentIdAtom);
+}
+
+export function useHermesEnvironmentIds(): ReadonlyArray<EnvironmentId> {
+  return useAtomValue(hermesEnvironmentIdsAtom);
 }
 
 export function useHermesEnvironmentEnabled(environmentId: EnvironmentId): boolean {

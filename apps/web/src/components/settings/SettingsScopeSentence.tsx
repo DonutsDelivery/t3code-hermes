@@ -83,7 +83,7 @@ export function SettingsScopeSentence() {
   );
 }
 
-interface ScopeOption {
+export interface ScopeOption {
   value: string;
   label: string;
   secondary?: string;
@@ -108,7 +108,7 @@ function ScopeOptionLabel({ option }: { option: ScopeOption }) {
   );
 }
 
-function ScopeMenu({
+export function ScopeMenu({
   ariaLabel,
   icon,
   label,
@@ -262,27 +262,30 @@ function EnvironmentScopeMenu({
               icon: <LayersIcon aria-hidden className="size-3.5 shrink-0" />,
             }
       }
-      options={environments.map((environment) => {
-        const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
-        return {
-          value: environment.environmentId,
-          label: primary,
-          secondary:
-            environments.length <= 1
-              ? ""
-              : secondary || settingsScopeEnvironmentAddress(environment),
-          icon: (
-            <EnvironmentMachineIcon
-              aria-hidden
-              kind={resolveEnvironmentMachineKind(environment.serverConfig)}
-              className="size-3.5 shrink-0"
-            />
-          ),
-          offline: environment.connection.phase !== "connected",
-        };
-      })}
+      options={environments.map((environment) => environmentScopeOption(environment, environments))}
     />
   );
+}
+
+export function environmentScopeOption(
+  environment: EnvironmentPresentation,
+  environments: readonly EnvironmentPresentation[],
+): ScopeOption {
+  const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
+  return {
+    value: environment.environmentId,
+    label: primary,
+    secondary:
+      environments.length <= 1 ? "" : secondary || settingsScopeEnvironmentAddress(environment),
+    icon: (
+      <EnvironmentMachineIcon
+        aria-hidden
+        kind={resolveEnvironmentMachineKind(environment.serverConfig)}
+        className="size-3.5 shrink-0"
+      />
+    ),
+    offline: environment.connection.phase !== "connected",
+  };
 }
 
 function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsScopeMenuProps) {
