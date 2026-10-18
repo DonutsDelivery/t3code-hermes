@@ -96,7 +96,9 @@ afterEach(async () => {
 });
 
 it("fetches full output only when a run is expanded, not when task history opens", async () => {
-  await render(<HermesTasksTab onNewTask={vi.fn()} target={{ environmentId }} />);
+  await render(
+    <HermesTasksTab environmentId={environmentId} onNewTask={vi.fn()} target={{ environmentId }} />,
+  );
   expect(state.getOutput).not.toHaveBeenCalled();
   await click("Expand task Report");
   expect(state.getOutput).not.toHaveBeenCalled();
@@ -114,6 +116,7 @@ it("fetches full output only when a run is expanded, not when task history opens
 it("opens the targeted task and run immediately on its owning environment", async () => {
   await render(
     <HermesTasksTab
+      environmentId={environmentId}
       onNewTask={vi.fn()}
       target={{ environmentId, jobId: run.jobId, runId: "run" }}
     />,

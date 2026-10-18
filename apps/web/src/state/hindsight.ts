@@ -36,7 +36,6 @@ import { Atom } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 
 import { toastManager } from "../components/ui/toast";
-import { useHermesEnvironmentId } from "./hermesCron";
 import { useEnvironmentQuery } from "./query";
 import { serverEnvironment } from "./server";
 import { useAtomCommand } from "./use-atom-command";
@@ -91,10 +90,10 @@ const hindsightEnabledAtom = Atom.family((environmentId: EnvironmentId | null) =
   ),
 );
 
-export function useHindsightMemory(): HindsightMemoryState & HindsightMemoryActions {
-  // Hindsight is configured beside Hermes, so the panel reads both from the
-  // same environment rather than defaulting to whichever one opened first.
-  const environmentId = useHermesEnvironmentId();
+/** Hindsight is configured beside Hermes, so the panel reads both from the same environment. */
+export function useHindsightMemory(
+  environmentId: EnvironmentId | null,
+): HindsightMemoryState & HindsightMemoryActions {
   const enabled = useAtomValue(hindsightEnabledAtom(environmentId));
 
   const [selectedBank, setSelectedBank] = useState<HindsightBankId | null>(null);

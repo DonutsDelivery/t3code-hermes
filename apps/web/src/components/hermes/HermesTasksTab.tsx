@@ -34,6 +34,7 @@ import { HermesRunRow } from "./HermesRunRow";
 import { EMPTY_HERMES_SEARCH, type HermesSearch } from "./hermesNavigation";
 
 export interface HermesTasksTabProps {
+  readonly environmentId: EnvironmentId | null;
   readonly target?: HermesSearch;
   /** Closes the panel and drops a scheduling prompt into the composer. */
   readonly onNewTask: () => void;
@@ -184,9 +185,13 @@ function TasksGhost() {
   );
 }
 
-export function HermesTasksTab({ onNewTask, target = EMPTY_HERMES_SEARCH }: HermesTasksTabProps) {
-  const { jobs, environmentId, isPending, error, emptyState, view, setEnabled, setMuted } =
-    useHermesCron(target.environmentId);
+export function HermesTasksTab({
+  environmentId,
+  onNewTask,
+  target = EMPTY_HERMES_SEARCH,
+}: HermesTasksTabProps) {
+  const { jobs, isPending, error, emptyState, view, setEnabled, setMuted } =
+    useHermesCron(environmentId);
 
   return (
     <div className="flex flex-col gap-3">

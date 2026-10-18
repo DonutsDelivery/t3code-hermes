@@ -14,7 +14,6 @@ import type {
 import { AlertTriangleIcon } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
-import { useHermesEnvironmentId } from "../../state/hermesCron";
 import { useHermesMemory } from "../../state/hermesMemory";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -328,8 +327,11 @@ function NativeMemoryContent({ environmentId }: { environmentId: EnvironmentId |
   );
 }
 
-export function HermesNativeMemorySection() {
-  const environmentId = useHermesEnvironmentId();
+export function HermesNativeMemorySection({
+  environmentId,
+}: {
+  readonly environmentId: EnvironmentId | null;
+}) {
   // A new environment must never inherit another host's draft or revision.
   return <NativeMemoryContent key={environmentId ?? "disabled"} environmentId={environmentId} />;
 }

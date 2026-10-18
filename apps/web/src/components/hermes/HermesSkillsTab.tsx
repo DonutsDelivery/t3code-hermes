@@ -4,7 +4,7 @@ import {
   HERMES_SKILL_ORIGIN_FILTERS,
   HERMES_SKILL_ORIGIN_LABELS,
 } from "@t3tools/client-runtime/state/hermes-skills";
-import type { HermesSkill } from "@t3tools/contracts";
+import type { EnvironmentId, HermesSkill } from "@t3tools/contracts";
 import { ArrowLeftIcon, RefreshCwIcon } from "lucide-react";
 
 import { useHermesSkills } from "../../state/hermesSkills";
@@ -62,8 +62,12 @@ function SkillRow({
   );
 }
 
-export function HermesSkillsTab() {
-  const skills = useHermesSkills();
+export function HermesSkillsTab({
+  environmentId,
+}: {
+  readonly environmentId: EnvironmentId | null;
+}) {
+  const skills = useHermesSkills(environmentId);
   const selected = skills.selectedSkill;
   const documentMetadata = formatHermesSkillMetadata(skills.detail?.metadata);
 
