@@ -368,7 +368,7 @@ export function OutdatedServerUpdateAction({
     toastManager.add({
       type: "success",
       title: `${serverLabel} updated`,
-      description: `Reconnected on t3@${result.value.targetVersion}.`,
+      description: `Reconnected on t3-hermes@${result.value.targetVersion}.`,
     });
   };
   return (
