@@ -496,6 +496,10 @@ const config: ExpoConfig = {
       : {}),
   },
   owner: repoEnv.T3HERMES_EXPO_OWNER?.trim() || undefined,
+  experiments: {
+    // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
+    reactCompiler: true,
+  },
 };
 
 export default config;
