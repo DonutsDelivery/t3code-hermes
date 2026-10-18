@@ -5272,9 +5272,14 @@ export default function ChatView(props: ChatViewProps) {
       item.type === "user_message" &&
       (item.text.trim().toLowerCase() !== "/compact" || item.attachments.length > 0),
   );
+  // Draft selections are client-wide sticky state, so they can name a provider
+  // this environment has disabled; the composer skips those and sends to the
+  // resolved instance instead, so only that instance can cause a handoff.
   const pendingHandoff = resolvePendingHandoff(
     serverProjection,
-    composerSelectedModelSelection ?? activeThread?.modelSelection,
+    composerSelectedModelSelection?.instanceId === activeProviderInstanceId
+      ? composerSelectedModelSelection
+      : activeThread?.modelSelection,
     providerStatuses,
   );
   const compactThreadUnavailable =
