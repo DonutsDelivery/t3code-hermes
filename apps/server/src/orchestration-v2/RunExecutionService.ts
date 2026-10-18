@@ -50,6 +50,7 @@ import {
 } from "@t3tools/provider-core/server/failure";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import { RunThroughputMeter } from "./RunThroughputMeter.ts";
+import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
 export interface ProviderEventRoutingState {
   readonly ownedThreadIds: ReadonlySet<ThreadId>;
@@ -568,6 +569,7 @@ export const layer: Layer.Layer<
   | ProviderEventIngestor.ProviderEventIngestorV2
   | ServerSettings.ServerSettingsService
   | McpAppModelContext.McpAppModelContext
+  | TurnItemPositionStore.TurnItemPositionStoreV2
 > = Layer.effect(
   RunExecutionServiceV2,
   Effect.gen(function* () {
@@ -577,6 +579,7 @@ export const layer: Layer.Layer<
     const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
+    const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
     const throughputMeter = yield* RunThroughputMeter;
 
@@ -1201,6 +1204,9 @@ export const layer: Layer.Layer<
           });
           const filterAssistantEvent = makeAssistantStreamingFilter(responseStreamingMode);
           const throughputRun = { threadId: input.run.threadId, runId: input.run.id };
+          // Held text writes nothing, so its item would take a position only
+          // when finally written, behind every item that began after it.
+          const reservedHeldTurnItemIds = new Set<TurnItemId>();
           const providerEventFiber = yield* eventSubscription.events.pipe(
             Stream.filterEffect((event) =>
               Ref.modify(eventRouting, (state) => routeProviderEvent(event, routeIdentity, state)),
@@ -1259,6 +1265,19 @@ export const layer: Layer.Layer<
                   ) {
                     yield* Ref.set(providerThreadOwnerLost, true);
                   }
+                } else if (
+                  event.type === "turn_item.updated" &&
+                  (event.turnItem.type === "assistant_message" ||
+                    event.turnItem.type === "reasoning") &&
+                  event.turnItem.streaming &&
+                  !reservedHeldTurnItemIds.has(event.turnItem.id)
+                ) {
+                  yield* turnItemPositions.allocate({
+                    threadId: event.turnItem.threadId,
+                    turnItemId: event.turnItem.id,
+                    runId: event.turnItem.runId,
+                  });
+                  reservedHeldTurnItemIds.add(event.turnItem.id);
                 }
                 if (event.type === "provider_thread.updated") {
                   if (event.providerThread.id === input.providerThread.id && storedEventCount > 0) {
