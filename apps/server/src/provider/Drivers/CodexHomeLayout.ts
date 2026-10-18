@@ -35,7 +35,8 @@ const PRIVATE_ENTRY_NAMES = new Set(["auth.json", "models_cache.json"]);
  * already in the shadow is left alone rather than treated as a conflict.
  */
 const OPTIONAL_SHARED_FILE_NAMES = new Set(["hooks.json"]);
-const SHADOW_LOCAL_ENTRY_NAMES = new Set(["log", "memories", "tmp"]);
+// Finder maintains metadata separately for each directory, including shadow homes.
+const SHADOW_LOCAL_ENTRY_NAMES = new Set(["log", "memories", "tmp", ".DS_Store"]);
 // Codex creates these runtime locks itself when it starts in a shadow home before the shared
 // home has one. They guard shared state, so a local copy is replaced with the shared link.
 const REPLACEABLE_SHARED_RUNTIME_ENTRIES = new Set(["mcp-oauth-locks", ".sqlite-maintenance.lock"]);
