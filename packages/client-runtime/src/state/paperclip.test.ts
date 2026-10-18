@@ -7,6 +7,8 @@ import {
   formatPaperclipAge,
   formatPaperclipStatus,
   paperclipOrgRows,
+  paperclipRefreshSeconds,
+  splitPaperclipRefreshInterval,
 } from "./paperclip.ts";
 
 const agent = (id: string, name: string, reportsTo: string | null): PaperclipAgent => ({
@@ -112,4 +114,25 @@ it("formats statuses and ages for rows", () => {
   const now = Date.parse("2026-10-17T12:00:00.000Z");
   expect(formatPaperclipAge("2026-10-17T09:00:00.000Z", now)).toBe("3h ago");
   expect(formatPaperclipAge(null, now)).toBeNull();
+});
+
+describe("auto-refresh interval", () => {
+  it("shows a saved interval in the largest unit that divides it", () => {
+    expect(splitPaperclipRefreshInterval(7_200)).toEqual({ amount: 2, unit: "hours" });
+    expect(splitPaperclipRefreshInterval(90)).toEqual({ amount: 90, unit: "seconds" });
+    expect(splitPaperclipRefreshInterval(172_800)).toEqual({ amount: 2, unit: "days" });
+    expect(splitPaperclipRefreshInterval(0, "hours")).toEqual({ amount: 0, unit: "hours" });
+  });
+
+  it("saves zero as off and clamps everything else into range", () => {
+    expect(paperclipRefreshSeconds(0, "minutes")).toBe(0);
+    expect(paperclipRefreshSeconds(5, "minutes")).toBe(300);
+    expect(paperclipRefreshSeconds(3, "seconds")).toBe(10);
+    expect(paperclipRefreshSeconds(30, "days")).toBe(7 * 86_400);
+  });
+
+  it("round-trips what it saves", () => {
+    const saved = paperclipRefreshSeconds(45, "minutes");
+    expect(splitPaperclipRefreshInterval(saved)).toEqual({ amount: 45, unit: "minutes" });
+  });
 });

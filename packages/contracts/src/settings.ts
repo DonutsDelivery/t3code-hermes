@@ -12,6 +12,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
   ForwardCompatibleNullable,
   ForwardCompatibleOptional,
+  NonNegativeInt,
   OmittedWhenNull,
   ProjectId,
   ThreadId,
@@ -872,6 +873,11 @@ export const PaperclipSettings = Schema.Struct({
   apiKey: Schema.optionalKey(TrimmedString),
   /** Which company to show. Empty uses the first company the key can see. */
   companyId: Schema.optionalKey(TrimmedString),
+  /**
+   * How often an open Paperclip surface rereads the company, in seconds.
+   * Zero leaves refreshing to the user.
+   */
+  autoRefreshSeconds: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
 });
 export type PaperclipSettings = typeof PaperclipSettings.Type;
 
@@ -1584,6 +1590,7 @@ export const ServerSettingsPatch = Schema.Struct({
           baseUrl: Schema.optionalKey(TrimmedString),
           apiKey: Schema.optionalKey(TrimmedString),
           companyId: Schema.optionalKey(TrimmedString),
+          autoRefreshSeconds: Schema.optionalKey(NonNegativeInt),
         }),
       ),
     }),

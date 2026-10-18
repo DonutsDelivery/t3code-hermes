@@ -27,5 +27,9 @@ company ID in **Company**.
 From a thread, open the right panel's **Open a surface** list and choose **Paperclip** (shortcut
 `C`), or run **Show Paperclip** from the command palette.
 
+The surface reads Paperclip when it opens and when you select refresh. To keep it current on its
+own, set **Auto-refresh** in **Settings → Integrations → Paperclip** to an interval such as 1
+minute. It only refreshes while the surface is open and the window is visible.
+
 If the surface says the key was rejected, it has expired or was revoked: create a new one and
 save it in Settings.

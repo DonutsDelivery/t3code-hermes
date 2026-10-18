@@ -191,6 +191,47 @@ export function paperclipAgentName(
   return agents.find((agent) => agent.id === id)?.name ?? `Agent ${id.slice(0, 8)}`;
 }
 
+export type PaperclipRefreshUnit = "seconds" | "minutes" | "hours" | "days";
+
+export const PAPERCLIP_REFRESH_UNIT_SECONDS: Readonly<Record<PaperclipRefreshUnit, number>> = {
+  seconds: 1,
+  minutes: 60,
+  hours: 3_600,
+  days: 86_400,
+};
+
+/**
+ * Each overview is several Paperclip reads, so faster than this would mostly
+ * cancel the read still in flight.
+ */
+export const PAPERCLIP_REFRESH_MIN_SECONDS = 10;
+/** `setInterval` overflows a 32-bit millisecond delay past ~24.8 days. */
+export const PAPERCLIP_REFRESH_MAX_SECONDS = 7 * 86_400;
+
+/**
+ * The saved interval as the amount and unit the setting shows: the largest
+ * unit that divides it evenly, so 7200 reads as 2 hours and 90 as 90 seconds.
+ * Zero (off) keeps whichever unit the caller was already showing.
+ */
+export function splitPaperclipRefreshInterval(
+  seconds: number,
+  fallbackUnit: PaperclipRefreshUnit = "minutes",
+): { readonly amount: number; readonly unit: PaperclipRefreshUnit } {
+  if (seconds <= 0) return { amount: 0, unit: fallbackUnit };
+  for (const unit of ["days", "hours", "minutes"] as const) {
+    const size = PAPERCLIP_REFRESH_UNIT_SECONDS[unit];
+    if (seconds % size === 0) return { amount: seconds / size, unit };
+  }
+  return { amount: seconds, unit: "seconds" };
+}
+
+/** What to save for an amount in a unit: 0 is off, anything else is clamped into range. */
+export function paperclipRefreshSeconds(amount: number, unit: PaperclipRefreshUnit): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const seconds = Math.round(amount * PAPERCLIP_REFRESH_UNIT_SECONDS[unit]);
+  return Math.min(PAPERCLIP_REFRESH_MAX_SECONDS, Math.max(PAPERCLIP_REFRESH_MIN_SECONDS, seconds));
+}
+
 /** `issue.updated` → `Issue updated`. */
 export function formatPaperclipAction(action: string): string {
   return formatPaperclipStatus(action.replaceAll(".", " "));

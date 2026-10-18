@@ -23,7 +23,7 @@ import {
 import type { EnvironmentId, PaperclipOverviewResult } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowUpRightIcon, Paperclip, SettingsIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useEffectEvent } from "react";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { readLocalApi } from "~/localApi";
@@ -71,14 +71,38 @@ function EmptyLine({ children }: { readonly children: ReactNode }) {
   return <p className="px-1 text-xs text-muted-foreground">{children}</p>;
 }
 
+/**
+ * Rereads on the user's interval while the surface is open. A hidden tab skips
+ * its ticks and a read still in flight is never cancelled, so a short interval
+ * cannot pile reads onto a slow Paperclip.
+ */
+function usePaperclipAutoRefresh(
+  query: { readonly refresh: () => void; readonly isPending: boolean },
+  intervalSeconds: number,
+) {
+  const tick = useEffectEvent(() => {
+    if (document.visibilityState === "visible" && !query.isPending) query.refresh();
+  });
+  useEffect(() => {
+    if (intervalSeconds <= 0) return;
+    const timer = setInterval(tick, intervalSeconds * 1000);
+    return () => clearInterval(timer);
+  }, [intervalSeconds]);
+}
+
 export function PaperclipPanel({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const enabled = useEnvironmentSettings(
     environmentId,
     (settings) => settings.integrations.paperclip.enabled,
   );
+  const autoRefreshSeconds = useEnvironmentSettings(
+    environmentId,
+    (settings) => settings.integrations.paperclip.autoRefreshSeconds,
+  );
   const query = useEnvironmentQuery(
     enabled ? serverEnvironment.paperclipOverview({ environmentId, input: {} }) : null,
   );
+  usePaperclipAutoRefresh(query, enabled ? autoRefreshSeconds : 0);
   const navigate = useNavigate();
   const openSettings = () => void navigate({ to: "/settings/integrations" });
 

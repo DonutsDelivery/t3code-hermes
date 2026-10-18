@@ -740,6 +740,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "paperclip-auto-refresh",
+    title: "Paperclip auto-refresh",
+    to: "/settings/integrations",
+    targetId: "paperclip",
+    searchTerms: ["paperclip auto refresh interval poll timer reload seconds minutes hours days"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "memory-server",
     title: "Hindsight server",
     to: "/settings/integrations",

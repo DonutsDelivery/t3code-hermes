@@ -7,7 +7,15 @@
  *
  * @module PaperclipSettings
  */
-import { describePaperclipConnection } from "@t3tools/client-runtime/state/paperclip";
+import {
+  describePaperclipConnection,
+  PAPERCLIP_REFRESH_MAX_SECONDS,
+  PAPERCLIP_REFRESH_MIN_SECONDS,
+  PAPERCLIP_REFRESH_UNIT_SECONDS,
+  type PaperclipRefreshUnit,
+  paperclipRefreshSeconds,
+  splitPaperclipRefreshInterval,
+} from "@t3tools/client-runtime/state/paperclip";
 import type { EnvironmentId, PaperclipSettings } from "@t3tools/contracts";
 import { RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
@@ -21,12 +29,21 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
+import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 type PaperclipPatch = { -readonly [K in keyof PaperclipSettings]?: PaperclipSettings[K] };
+
+const REFRESH_UNIT_LABELS: Record<PaperclipRefreshUnit, string> = {
+  seconds: "Seconds",
+  minutes: "Minutes",
+  hours: "Hours",
+  days: "Days",
+};
 
 export function PaperclipSettingsSection() {
   const { environment: selected } = useSettingsScope();
@@ -130,6 +147,11 @@ function PaperclipSettingsControls({ environmentId }: { readonly environmentId: 
           </Button>
         }
       />
+      <PaperclipAutoRefreshRow
+        savedSeconds={saved.autoRefreshSeconds}
+        disabled={disabled}
+        onSave={(autoRefreshSeconds) => void save({ autoRefreshSeconds })}
+      />
       <SettingsRow
         {...searchableSetting("paperclip-server")}
         description="Paperclip's address as this environment's server reaches it. A trailing /api is fine."
@@ -227,5 +249,78 @@ function PaperclipSettingsControls({ environmentId }: { readonly environmentId: 
         }
       />
     </>
+  );
+}
+
+function PaperclipAutoRefreshRow(props: {
+  readonly savedSeconds: number;
+  readonly disabled: boolean;
+  readonly onSave: (seconds: number) => void;
+}) {
+  // The unit is local so "0 hours" stays in hours after turning it off.
+  const [unit, setUnit] = useState<PaperclipRefreshUnit>(
+    () => splitPaperclipRefreshInterval(props.savedSeconds).unit,
+  );
+  const shown = splitPaperclipRefreshInterval(props.savedSeconds, unit);
+  const commit = (amount: number | null, nextUnit: PaperclipRefreshUnit) => {
+    const next = paperclipRefreshSeconds(amount ?? 0, nextUnit);
+    if (next !== props.savedSeconds) props.onSave(next);
+  };
+
+  return (
+    <SettingsRow
+      {...searchableSetting("paperclip-auto-refresh")}
+      description={`Reread the company on this interval while the Paperclip surface is open. 0 turns it off. Between ${PAPERCLIP_REFRESH_MIN_SECONDS} seconds and ${PAPERCLIP_REFRESH_MAX_SECONDS / PAPERCLIP_REFRESH_UNIT_SECONDS.days} days.`}
+      resetAction={
+        props.savedSeconds > 0 ? (
+          <SettingResetButton
+            label="Paperclip auto-refresh"
+            tooltip="Turn off"
+            onClick={() => props.onSave(0)}
+          />
+        ) : null
+      }
+      control={
+        <div className="flex items-center gap-2">
+          <NumberField
+            // Remount when the saved value changes so a clamped entry shows what was saved.
+            key={`${props.savedSeconds}:${shown.unit}`}
+            defaultValue={shown.amount}
+            min={0}
+            step={1}
+            size="sm"
+            className="w-20"
+            disabled={props.disabled}
+            onValueCommitted={(amount) => commit(amount, shown.unit)}
+          >
+            <NumberFieldGroup>
+              <NumberFieldInput aria-label="Paperclip auto-refresh interval" />
+            </NumberFieldGroup>
+          </NumberField>
+          <Select
+            value={shown.unit}
+            disabled={props.disabled}
+            onValueChange={(value) => {
+              const nextUnit = value as PaperclipRefreshUnit;
+              setUnit(nextUnit);
+              if (shown.amount > 0) commit(shown.amount, nextUnit);
+            }}
+          >
+            <SelectTrigger size="sm" className="w-28" aria-label="Paperclip auto-refresh unit">
+              <SelectValue>
+                {(value: PaperclipRefreshUnit) => REFRESH_UNIT_LABELS[value]}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {(Object.keys(REFRESH_UNIT_LABELS) as PaperclipRefreshUnit[]).map((option) => (
+                <SelectItem key={option} hideIndicator value={option}>
+                  {REFRESH_UNIT_LABELS[option]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      }
+    />
   );
 }
