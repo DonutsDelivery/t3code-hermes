@@ -130,6 +130,7 @@ interface FilePreviewPanelProps {
   composerDraftTarget: ScopedThreadRef | DraftId;
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
+  openInShortcutEnabled: boolean;
   revealLine: number | null;
   revealRequestId: number;
   onOpenFile: (relativePath: string) => void;
@@ -978,6 +979,7 @@ export default function FilePreviewPanel({
   composerDraftTarget,
   keybindings,
   availableEditors,
+  openInShortcutEnabled,
   revealLine,
   revealRequestId,
   onOpenFile,
@@ -1238,6 +1240,7 @@ export default function FilePreviewPanel({
               environmentId={environmentId}
               keybindings={keybindings}
               availableEditors={availableEditors}
+              enableShortcut={openInShortcutEnabled}
               openInCwd={absolutePath}
               compact
               revealFileManager={revealsInFileManager}

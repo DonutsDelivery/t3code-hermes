@@ -29,6 +29,7 @@ import {
   hasNotificationSound,
   playNotificationSound,
   setNotificationBadge,
+  threadNotificationTag,
   unlockNotificationAudio,
   type AttentionKind,
 } from "../threadNotifications";
@@ -243,7 +244,7 @@ function EnvironmentNotifications({
         continue;
       }
       if (document.visibilityState === "visible" && document.hasFocus()) continue;
-      const tag = `${environmentId}:${thread.id}`;
+      const tag = threadNotificationTag(environmentId, thread.id);
       const badgeKind = kind === "input" && status === "failed" ? "failed" : kind;
       if (
         !hasDesktopNotifications(mode) ||

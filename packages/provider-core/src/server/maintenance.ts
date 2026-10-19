@@ -1,4 +1,5 @@
 import type { ProviderDriverKind } from "@t3tools/contracts";
+import type * as Effect from "effect/Effect";
 
 export interface ProviderMaintenanceCapabilities {
   readonly provider: ProviderDriverKind;
@@ -16,6 +17,10 @@ export interface ProviderMaintenanceCapabilities {
    * may be calendar-versioned (Hermes titles read `Hermes Agent v0.21.5 (v2026.9.24)`).
    */
   readonly githubReleaseRepository?: string;
+  /**
+   * Deferred until update checks are enabled; `null` falls back to npm.
+   */
+  readonly lookupLatestVersion?: Effect.Effect<string | null>;
   readonly compareVersions?: (current: string, latest: string) => number;
   /**
    * The executable T3 Code runs, symlinks followed, when no update command is
