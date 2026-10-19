@@ -376,6 +376,19 @@ export const HermesIcon: Icon = ({ className, ...props }) => (
   </svg>
 );
 
+// The logo is a raster, so mask with it to take currentColor like stroke icons.
+export const HermesGlyphIcon: Icon = (props) => {
+  const maskId = `${useId()}-hermes-glyph`;
+  return (
+    <svg {...props} viewBox="0 0 256 256" fill="none">
+      <mask id={maskId}>
+        <image href={hermesLogo} width="256" height="256" />
+      </mask>
+      <rect width="256" height="256" fill="currentColor" mask={`url(#${maskId})`} />
+    </svg>
+  );
+};
+
 export const TraeIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 24 24" fill="currentColor">
     {}

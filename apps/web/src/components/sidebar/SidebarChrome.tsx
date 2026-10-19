@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, ClockIcon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -8,6 +8,7 @@ import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { useHermesEnvironmentId } from "../../state/hermesCron";
 import { useHermesTasksUnread } from "../../state/hermesCronSeen";
+import { HermesGlyphIcon } from "../Icons";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -240,7 +241,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
           {hermesAvailable ? (
             <SidebarUtilityItem
-              icon={<ClockIcon />}
+              icon={<HermesGlyphIcon />}
               label={hermesUnread ? "Hermes — a task finished" : "Hermes"}
               onClick={handleHermesClick}
               unread={hermesUnread}
