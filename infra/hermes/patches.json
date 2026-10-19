@@ -67,6 +67,11 @@
       "neededFor": "Fast Mode on Hermes models. Applying it also turns fast mode on for CLIProxyAPI endpoints in your Hermes config. Without it, the Fast Mode toggle does not appear.",
       "versions": [
         {
+          "hermesCommit": "349e4f7e620ea1be6a8b5703d7152cf1e5ed9998",
+          "hermesCommitDate": "2026-10-19T13:07:41Z",
+          "file": "acp-fast-mode/349e4f7e620e.patch"
+        },
+        {
           "hermesCommit": "439334127f012e1ee0685acd5dba288e459af0ec",
           "hermesCommitDate": "2026-10-04T19:49:39Z",
           "file": "acp-fast-mode/439334127f01.patch"

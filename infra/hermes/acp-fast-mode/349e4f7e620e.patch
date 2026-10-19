@@ -1,0 +1,383 @@
+diff --git a/acp_adapter/gateway_server.py b/acp_adapter/gateway_server.py
+index 5e806d1643..30a6c2e13c 100644
+--- a/acp_adapter/gateway_server.py
++++ b/acp_adapter/gateway_server.py
+@@ -21,6 +21,8 @@ from acp_adapter.session import _translate_acp_cwd, _normalize_cwd_for_compare
+ 
+ logger = logging.getLogger(__name__)
+ 
++FAST_MODE_CONFIG_ID = "fast_mode"
++
+ 
+ def _slash_command(text):
+     """Canonical Hermes command name ``text`` invokes, or None for ordinary text.
+@@ -120,6 +122,8 @@ class GatewayACPAgent(GatewayReplyMixin, acp.Agent):
+         # Session -> the owner's latest usage dict (``session.usage`` / ``session.stats``).
+         self._usage = {}
+         self._background = set()
++        # Session -> the editor's ``fast_mode`` choice (None until set), re-pinned before every prompt.
++        self._fast_modes = {}
+ 
+     def on_connect(self, conn):
+         self._conn = conn
+@@ -573,7 +577,10 @@ class GatewayACPAgent(GatewayReplyMixin, acp.Agent):
+ 
+     async def set_config_option(self, config_id, session_id, value=None, **kwargs):
+         """Accepted so editors do not fail on their own config writes, as main did; only the edit
+-        approval policy has a meaning here, and it is the same owner setting the modes select."""
++        approval policy has a meaning here, and it is the same owner setting the modes select.
++        ``fast_mode`` (``on``/``off``) is the session's ``/fast``. It is not advertised as a config
++        option (Zed would render it in place of the model picker); picker rows whose route takes it
++        carry ``_meta.hermes.fastMode`` instead."""
+         from acp.schema import SetSessionConfigOptionResponse
+         from acp_adapter.modes import EDIT_APPROVAL_POLICY_CONFIG_ID, EDIT_APPROVAL_POLICY_TO_MODE
+         session_id = self._held_session(session_id)
+@@ -581,8 +588,22 @@ class GatewayACPAgent(GatewayReplyMixin, acp.Agent):
+             if value not in EDIT_APPROVAL_POLICY_TO_MODE:
+                 raise GatewayClientError("invalid_params")
+             await self._set_edit_policy(session_id, value)
++        elif config_id == FAST_MODE_CONFIG_ID:
++            from utils import is_truthy_value
++            self._fast_modes[session_id] = is_truthy_value(value)
++            await self._pin_fast_mode(session_id)
+         return SetSessionConfigOptionResponse(config_options=[])
+ 
++    async def _pin_fast_mode(self, session_id):
++        """The owner's session-scoped ``/fast`` (``config.set service_tier``), gated per turn by the
++        route as ``/fast`` is, so an unsupported route sends nothing. The owner keeps the pin in
++        memory only (a restart or a session boundary drops it), so every prompt pins it again."""
++        fast = self._fast_modes.get(session_id)
++        if fast is None:
++            return
++        await (await self._client()).rpc("config.set", session_id=session_id, key="service_tier",
++                                         value="fast" if fast else "normal", _timeout=10)
++
+     async def _set_edit_policy(self, session_id, policy):
+         """The owner's ``edit_policy`` mutation (revision-fenced, idle sessions only, like a model pick);
+         every surface attached to the session reads the committed policy from ``session.info``."""
+@@ -641,6 +662,11 @@ class GatewayACPAgent(GatewayReplyMixin, acp.Agent):
+             return PromptResponse(stop_reason='end_turn')
+         # ... and every prepared control's (a slash keeps its own key: apply retires the rest).
+         self._mutations.retire(session_id)
++        try:
++            await self._pin_fast_mode(session_id)
++        except GatewayClientError:
++            # The submit below meets the same connection and reports its own outcome.
++            logger.debug("ACP session %s fast mode not re-pinned", session_id, exc_info=True)
+         submit = {'text': text}
+         if attachments:
+             submit['attachments'] = attachments
+diff --git a/acp_adapter/gateway_session_meta.py b/acp_adapter/gateway_session_meta.py
+index 2c1766a6c7..40f0f21e95 100644
+--- a/acp_adapter/gateway_session_meta.py
++++ b/acp_adapter/gateway_session_meta.py
+@@ -71,12 +71,17 @@ def model_state(info: dict) -> SessionModelState | None:
+     """The picker for the session's model (``session.info``), from the shared inventory; a single
+     current-model row when nothing is listable, as main's ``_build_model_state``. Blocking."""
+     from acp_adapter.auth import detect_provider
+-    from acp_adapter.model_catalog import build_model_state, encode_model_choice
++    from acp_adapter.model_catalog import build_model_state, encode_model_choice, mark_fast_mode_models
+     model = str(info.get("model") or "").strip()
+     provider = info.get("provider") or detect_provider() or "openrouter"
+     try:
+         picker = build_model_state(model, provider, "")
+         if picker is not None:
++            try:
++                return mark_fast_mode_models(picker)
++            except Exception:
++                # Boundary: the fast-mode tags are an extra; the picker still shows without them.
++                logger.debug("Could not mark fast-mode models", exc_info=True)
+             return picker
+     except Exception:
+         # Boundary: a broken inventory must not fail session/new; the current model still shows.
+diff --git a/acp_adapter/model_catalog.py b/acp_adapter/model_catalog.py
+index b014391795..7b03254e97 100644
+--- a/acp_adapter/model_catalog.py
++++ b/acp_adapter/model_catalog.py
+@@ -235,6 +235,41 @@ class _ModelCatalog:
+                 self.add(named_slug, named_model, named_model, " • ".join(part for part in parts if part))
+ 
+ 
++def mark_fast_mode_models(state: SessionModelState) -> SessionModelState:
++    """Tag rows whose route takes fast mode with ``_meta.hermes.fastMode`` — the ``/fast`` gate,
++    per row — so a client offers the ``fast_mode`` session option only where it changes the
++    request."""
++    from hermes_cli.config import get_compatible_custom_providers, load_config_readonly
++    from hermes_cli.models import model_supports_fast_mode, resolve_fast_mode_overrides
++    from hermes_cli.providers import custom_provider_slug
++
++    endpoints: dict[str, str] | None = None
++    rows = []
++    for row in state.available_models:
++        # Cheap pre-filter on the trailing id segment before parsing the provider prefix.
++        if not model_supports_fast_mode(row.model_id.split(":")[-1]):
++            rows.append(row)
++            continue
++        provider = _choice_provider(row.model_id)
++        model = row.model_id[len(provider) + 1:] if row.model_id.lower().startswith(provider + ":") else row.model_id
++        base_url = None
++        if provider.startswith("custom:"):
++            if endpoints is None:
++                endpoints = {
++                    custom_provider_slug(str(e.get("name") or ""), str(e.get("provider_key") or "")): str(e.get("base_url") or "")
++                    for e in get_compatible_custom_providers(load_config_readonly())
++                }
++            base_url = endpoints.get(provider)
++        if (provider.startswith("custom") and not base_url) or resolve_fast_mode_overrides(
++                model, provider=provider, base_url=base_url) is None:
++            rows.append(row)
++            continue
++        meta = dict(row.field_meta or {})
++        meta["hermes"] = {**(meta.get("hermes") or {}), "fastMode": True}
++        rows.append(row.model_copy(update={"field_meta": meta}))
++    return state.model_copy(update={"available_models": rows})
++
++
+ def build_model_state(model: str, provider: str, base_url: str) -> SessionModelState | None:
+     """Picker state from the shared inventory + named endpoints; ``None`` when nothing is listable
+     (caller falls back to a single current-model row). Raises on inventory failure."""
+diff --git a/hermes_cli/models.py b/hermes_cli/models.py
+index 2064f0d36d..b9f4a64b1c 100644
+--- a/hermes_cli/models.py
++++ b/hermes_cli/models.py
+@@ -1249,13 +1249,35 @@ def _is_anthropic_fast_model(model_id: Optional[str]) -> bool:
+     return is_anthropic_fast_mode_model(model_id)
+ 
+ 
++def _custom_endpoint_accepts_fast_mode(base_url: Optional[str]) -> bool:
++    """A configured endpoint that opted in with ``capabilities: {fast_mode: true}`` — a proxy that
++    forwards ``service_tier`` to a first-party backend that bills for it."""
++    target = str(base_url or "").strip().rstrip("/").lower()
++    if not target:
++        return False
++    try:
++        from hermes_cli.config import get_compatible_custom_providers, load_config_readonly
++
++        entries = get_compatible_custom_providers(load_config_readonly())
++    except Exception:
++        return False
++    return any(
++        (entry.get("capabilities") or {}).get("fast_mode") is True
++        and str(entry.get("base_url") or "").strip().rstrip("/").lower() == target
++        for entry in entries)
++
++
+ def _fast_mode_route_supported(
+     model_id: Optional[str], provider: Optional[str], base_url: Optional[str]) -> bool:
+-    """Only the first-party endpoint that bills for fast mode may receive its params."""
++    """Only the first-party endpoint that bills for fast mode may receive its params, unless the
++    user opted a custom endpoint in. That opt-in covers ``service_tier`` only: Anthropic's
++    ``speed`` needs the Messages API, and custom endpoints speak chat completions."""
+     from urllib.parse import urlparse
+ 
+     from agent.model_metadata import is_grok_46_family
+ 
++    if not _is_anthropic_fast_model(model_id) and _custom_endpoint_accepts_fast_mode(base_url):
++        return True
+     if _is_anthropic_fast_model(model_id):
+         allowed = {"anthropic": "api.anthropic.com"}
+     elif is_grok_46_family(str(model_id or "")):
+diff --git a/tests/acp_adapter/test_fast_mode.py b/tests/acp_adapter/test_fast_mode.py
+new file mode 100644
+index 0000000000..ba8b46efd1
+--- /dev/null
++++ b/tests/acp_adapter/test_fast_mode.py
+@@ -0,0 +1,198 @@
++"""Session-scoped fast mode over ACP, and the per-endpoint opt-in that lets a proxy receive it.
++
++Real config-file → ``load_config`` → fast-mode gate chain on the per-test ``HERMES_HOME``. ``hermes
++acp`` is a gateway viewer, so the session tests drive ``GatewayACPAgent`` against a real owner
++``AuthorityConnection`` and the owner's own per-turn route (``_resolve_turn_agent_config``); only the
++model inventory and the turn's model call are stubbed.
++"""
++
++import asyncio
++import os
++from pathlib import Path
++from types import MethodType, SimpleNamespace
++from unittest.mock import patch
++
++import acp
++import hermes_yaml as yaml
++import pytest
++import pytest_asyncio
++from acp.schema import ModelInfo, SessionModelState
++
++from acp_adapter.gateway_server import GatewayACPAgent
++from acp_adapter.model_catalog import mark_fast_mode_models
++from hermes_cli.gateway_client import GatewayClientError, GatewayRPCError
++from hermes_cli.models import resolve_fast_mode_overrides
++
++PROXY = "http://proxy.test:8317/v1"
++
++
++@pytest.fixture
++def hermes_config(monkeypatch, tmp_path):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++
++    def write(custom_providers: list[dict]) -> None:
++        (Path(os.environ["HERMES_HOME"]) / "config.yaml").write_text(
++            yaml.safe_dump({"custom_providers": custom_providers}), encoding="utf-8")
++
++    write([
++        {"name": "proxy", "base_url": PROXY, "capabilities": {"fast_mode": True}},
++        {"name": "plain", "base_url": "http://plain.test/v1"},
++    ])
++    return write
++
++
++def test_opted_in_endpoint_receives_service_tier_only(hermes_config):
++    assert resolve_fast_mode_overrides("gpt-5.5", provider="custom", base_url=PROXY + "/") == {
++        "service_tier": "priority"}
++    # Anthropic's ``speed`` is a Messages API parameter; a chat-completions proxy never gets it.
++    assert resolve_fast_mode_overrides("claude-opus-5-5", provider="custom", base_url=PROXY) is None
++    # Without the capability a proxy stays gated, as before.
++    assert resolve_fast_mode_overrides("gpt-5.5", provider="custom", base_url="http://plain.test/v1") is None
++
++
++def test_model_rows_carry_fast_mode_meta_where_the_route_takes_it(hermes_config):
++    ids = ["custom:proxy:gpt-5.5", "custom:proxy:claude-opus-5-5", "custom:proxy:glm-5.1",
++           "custom:plain:gpt-5.5", "openai-codex:gpt-5.5", "openrouter:openai/gpt-5.5"]
++    state = SessionModelState(available_models=[ModelInfo(model_id=i, name=i) for i in ids],
++                              current_model_id=ids[0])
++
++    marked = mark_fast_mode_models(state)
++
++    fast = [m.model_id for m in marked.available_models if (m.field_meta or {}).get("hermes", {}).get("fastMode")]
++    assert fast == ["custom:proxy:gpt-5.5", "openai-codex:gpt-5.5"]
++    assert marked.current_model_id == ids[0]
++
++
++def test_session_picker_marks_fast_rows(hermes_config):
++    """The picker every new/load/resume/fork reply carries (``_session_fields``) has the tags."""
++    from acp_adapter.gateway_session_meta import model_state
++
++    picker = SessionModelState(available_models=[ModelInfo(model_id="custom:proxy:gpt-5.5", name="gpt-5.5"),
++                                                 ModelInfo(model_id="custom:plain:gpt-5.5", name="gpt-5.5")],
++                               current_model_id="custom:proxy:gpt-5.5")
++    with patch("acp_adapter.model_catalog.build_model_state", return_value=picker):
++        state = model_state({"model": "gpt-5.5", "provider": "custom:proxy"})
++
++    assert [m.field_meta for m in state.available_models] == [{"hermes": {"fastMode": True}}, None]
++    assert state.current_model_id == "custom:proxy:gpt-5.5"
++
++
++class Wire:
++    """The ACP agent's gateway client over a real owner ``AuthorityConnection``."""
++
++    def __init__(self, loop):
++        self.loop, self.events, self.serial, self.viewer, self.calls = loop, asyncio.Queue(), 0, None, []
++
++    def write(self, frame):  # the authority's transport (may be called off-loop)
++        self.loop.call_soon_threadsafe(self.events.put_nowait, frame)
++        return True
++
++    async def rpc(self, method, *, _timeout=None, **params):
++        self.serial += 1
++        self.calls.append((method, params))
++        reply = await self.viewer.dispatch({'id': self.serial, 'method': method, 'params': params})
++        if 'error' in reply:
++            raise GatewayRPCError(reply['error'].get('data', {}).get('reason', 'request_failed'))
++        return reply['result']
++
++
++@pytest_asyncio.fixture
++async def gateway(hermes_config, tmp_path, monkeypatch):
++    """An editor attached to session ``s`` on a real owner; ``tiers`` records each turn's tier."""
++    from gateway.run import GatewayRunner
++    from gateway.session_controls import AuthorityConnection
++    from gateway.session_state import SERVICE_TIER_UNSET
++    from tests.gateway.test_surface_admission import _authority
++
++    tiers = []
++
++    async def answer(event):
++        from gateway.session_results import execution_result
++        tiers.append(authority.runner._resolve_session_service_tier(session_key=route))
++        execution_result.get()['result'] = {'final_response': 'ok', 'completed': True, 'messages': []}
++        return 'ok'
++
++    authority = await _authority(tmp_path, monkeypatch, answer)
++    # The fixture runner is a bare namespace: give it the real runner's per-session tier methods.
++    for name in ('_sessions_map', '_session_state', '_peek_session_state', '_set_session_service_tier_override',
++                 '_resolve_session_service_tier'):
++        setattr(authority.runner, name, MethodType(getattr(GatewayRunner, name), authority.runner))
++    authority.runner._load_service_tier = GatewayRunner._load_service_tier  # classmethod: already bound
++    authority.runner._resolve_session_key_or_none = lambda source, session_key: session_key
++    route = authority.sessions['s'].route
++    wire = Wire(asyncio.get_running_loop())
++    wire.viewer = AuthorityConnection(authority, wire, {'user_id': 'editor'})
++    agent = GatewayACPAgent()
++    agent._gateway = wire
++    agent._conn = SimpleNamespace(session_update=lambda **kwargs: asyncio.sleep(0))
++    agent._snapshots['s'] = await wire.rpc('session.resume', session_id='s')
++    agent._event_task = asyncio.create_task(agent._events())
++
++    def override():
++        state = authority.runner._peek_session_state(route)
++        return SERVICE_TIER_UNSET if state is None else state.conversation.service_tier_override
++
++    try:
++        yield SimpleNamespace(agent=agent, wire=wire, runner=authority.runner, route=route, override=override,
++                              tiers=tiers, unset=SERVICE_TIER_UNSET)
++    finally:
++        agent._event_task.cancel()
++        await wire.viewer.close()
++        authority.runner.session_store.close_all_db_handles()
++
++
++def _turn_overrides(runner, route, base_url):
++    """The request overrides the owner's next turn sends on ``base_url`` (``_resolve_turn_agent_config``)."""
++    from gateway.run import GatewayRunner
++
++    turn = SimpleNamespace(_service_tier=runner._resolve_session_service_tier(session_key=route))
++    runtime = {"provider": "custom", "base_url": base_url, "api_mode": "chat_completions", "args": [],
++               "request_overrides": {"extra_body": {"tags": ["t3"]}}}
++    return GatewayRunner._resolve_turn_agent_config(turn, "hi", "gpt-5.5", runtime)["request_overrides"]
++
++
++@pytest.mark.asyncio
++async def test_fast_mode_option_pins_the_owner_sessions_tier(gateway):
++    await gateway.agent.set_config_option("fast_mode", "s", "on")
++
++    assert gateway.override() == "priority"
++    assert _turn_overrides(gateway.runner, gateway.route, PROXY) == {
++        "extra_body": {"tags": ["t3"]}, "service_tier": "priority"}
++
++    # Off is an explicit normal pin, not "follow the profile": a profile-wide fast tier must not win.
++    await gateway.agent.set_config_option("fast_mode", "s", "off")
++    assert gateway.override() is None
++    assert _turn_overrides(gateway.runner, gateway.route, PROXY) == {"extra_body": {"tags": ["t3"]}}
++
++
++@pytest.mark.asyncio
++async def test_fast_mode_on_an_unsupported_route_sends_nothing(gateway):
++    await gateway.agent.set_config_option("fast_mode", "s", "on")
++
++    assert _turn_overrides(gateway.runner, gateway.route, "http://plain.test/v1") == {
++        "extra_body": {"tags": ["t3"]}}
++
++
++@pytest.mark.asyncio
++async def test_every_prompt_re_pins_the_tier_the_owner_dropped(gateway):
++    # An untouched session keeps the owner's own default and sends no tier write.
++    await asyncio.wait_for(gateway.agent.prompt([acp.text_block("untouched")], "s"), 5)
++    assert gateway.tiers == [None]
++    assert not [p for m, p in gateway.wire.calls if m == "config.set"]
++
++    await gateway.agent.set_config_option("fast_mode", "s", "on")
++    # The owner keeps the pin in memory: a gateway restart or a conversation boundary drops it.
++    gateway.runner._set_session_service_tier_override(gateway.route, None, clear=True)
++    assert gateway.override() is gateway.unset
++
++    response = await asyncio.wait_for(gateway.agent.prompt([acp.text_block("go fast")], "s"), 5)
++
++    assert response.stop_reason == "end_turn"
++    assert gateway.tiers == [None, "priority"]
++
++
++@pytest.mark.asyncio
++async def test_fast_mode_on_a_session_the_editor_does_not_hold_is_refused(gateway):
++    with pytest.raises(GatewayClientError, match="not_found"):
++        await gateway.agent.set_config_option("fast_mode", "other", "on")
++    assert gateway.override() is gateway.unset

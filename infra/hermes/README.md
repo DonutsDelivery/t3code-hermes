@@ -149,8 +149,10 @@ TUI, and gateway, never in ACP sessions, and sends fast-mode parameters only to 
 endpoints that bill for them, so a proxy that forwards `service_tier` (such as CLIProxyAPI) never
 gets it.
 
-The patch adds a per-session `fast_mode` ACP config option (`on`/`off`), applied through the same
-gate as `/fast` and re-pinned before every turn because `session/set_model` rebuilds the agent. It
+The patch adds a per-session `fast_mode` ACP config option (`on`/`off`). `hermes acp` is a viewer
+of the Hermes gateway, so the option becomes that session's `/fast` on the gateway, which applies
+it through the same route gate as `/fast` on each turn. The gateway forgets a session's `/fast`
+when it restarts or the conversation resets, so the choice is sent again before every prompt. It
 is deliberately not advertised in `configOptions`, since Zed would render it in place of the model
 picker; instead, picker rows whose route takes fast mode carry `_meta.hermes.fastMode: true`, which
 is how T3 Code knows where to offer the toggle. It also lets a custom endpoint opt in:
@@ -172,9 +174,10 @@ The opt-in covers `service_tier: priority` (OpenAI and xAI models) only. Anthrop
 is a Messages API parameter, and custom endpoints speak chat completions, so Claude models behind a
 proxy stay ungated.
 
-Restart the T3 Code server after applying the patch. The patch's
-`tests/acp_adapter/test_fast_mode.py` drives the real config, gate, and ACP server with a stubbed
-agent; run it with the rest of `tests/acp_adapter/` in a scratch checkout, as for
+Restart the Hermes gateway and the T3 Code server after applying the patch: the gateway runs the
+fast-mode gate and the endpoint opt-in. The patch's `tests/acp_adapter/test_fast_mode.py` drives the real config, gate,
+ACP gateway viewer, and gateway session controls, with only the model inventory and the model call
+stubbed; run it with the rest of `tests/acp_adapter/` in a scratch checkout, as for
 `acp-delegation-progress`.
 
 ## `acp-durable-completion-receipts`
