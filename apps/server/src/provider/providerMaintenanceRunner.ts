@@ -34,6 +34,7 @@ import { makeProviderMaintenanceCommandCoordinator } from "./providerMaintenance
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makeTargetedProviderUpdateAction,
+  resolveLatestProviderUpdateAction,
   resolveLatestProviderVersion,
   type ProviderMaintenanceCommandAction,
 } from "@t3tools/provider-core/server/maintenanceResolver";
@@ -480,7 +481,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
             const command =
               targetVersion !== undefined
                 ? makeTargetedProviderUpdateAction(fresh, targetVersion)
-                : fresh.update;
+                : resolveLatestProviderUpdateAction(fresh, candidateVersion);
             const rejected =
               targetVersion !== undefined
                 ? !command ||
