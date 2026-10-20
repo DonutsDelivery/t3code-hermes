@@ -44,5 +44,3 @@ its gateway while updating, before the patches are back, so restart it once more
   itself. Package-manager and container installs show why the tab has nothing to do.
 - Updating Hermes yourself keeps applied patches. If an update leaves a patch no longer fitting,
   the tab shows it as **Doesn't apply** rather than failing the update.
-- If the tab warns about a detached HEAD, your Hermes checkout is pinned to one commit and updates
-  cannot move it. Run `git checkout main` in the checkout, then update Hermes.

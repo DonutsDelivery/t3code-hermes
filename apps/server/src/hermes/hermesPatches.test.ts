@@ -13,7 +13,6 @@ import { HERMES_PATCH_FILES } from "./hermesPatchFiles.generated.ts";
 import {
   changeHermesPatch,
   HERMES_PATCHES,
-  isHermesCheckoutDetached,
   readHermesPatches,
   resolveHermesGitCheckout,
   type HermesPatchDefinition,
@@ -695,7 +694,8 @@ describe("hermes patches", () => {
     Effect.gen(function* () {
       const { root, patch } = yield* makeCheckout;
       const decoy = yield* makeCheckout;
-      git(decoy.root, "checkout", "--quiet", "--detach");
+      // Already patched, so reading the decoy instead would say "applied".
+      NodeFS.writeFileSync(NodePath.join(decoy.root, "session.py"), "remote_cwd = configured()\n");
       const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
       process.env.GIT_DIR = NodePath.join(decoy.root, ".git");
       process.env.GIT_WORK_TREE = decoy.root;
@@ -706,19 +706,8 @@ describe("hermes patches", () => {
         }
       });
 
-      const detached = yield* isHermesCheckoutDetached(root).pipe(Effect.ensuring(restore));
-      assert.isFalse(detached);
-      const [status] = yield* readHermesPatches(root, [patch]);
+      const [status] = yield* readHermesPatches(root, [patch]).pipe(Effect.ensuring(restore));
       assert.strictEqual(status?.state, "notApplied");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  );
-
-  it.effect("notices a detached HEAD, which hermes update cannot move", () =>
-    Effect.gen(function* () {
-      const { root } = yield* makeCheckout;
-      assert.isFalse(yield* isHermesCheckoutDetached(root));
-      git(root, "checkout", "--quiet", "--detach");
-      assert.isTrue(yield* isHermesCheckoutDetached(root));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
@@ -728,6 +717,25 @@ describe("hermes patches", () => {
       const binary = NodePath.join(root, "venv", "bin", "hermes");
       assert.strictEqual(yield* resolveHermesGitCheckout(binary), root);
       assert.isNull(yield* resolveHermesGitCheckout("/usr/bin/hermes"));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("follows the launcher the installer puts on PATH into the checkout", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { root } = yield* makeCheckout;
+      const inner = NodePath.join(root, ".hermes", "bin", "hermes");
+      NodeFS.mkdirSync(NodePath.dirname(inner), { recursive: true });
+      NodeFS.writeFileSync(inner, "#!/bin/sh\nexec /usr/bin/python3 -I -c 'import x' \"$@\"\n");
+      const bin = yield* fileSystem.makeTempDirectoryScoped({ prefix: "hermes-bin-" });
+      const launcher = NodePath.join(bin, "local", "bin", "hermes");
+      NodeFS.mkdirSync(NodePath.dirname(launcher), { recursive: true });
+      NodeFS.writeFileSync(launcher, `#!/bin/sh\nexec ${inner} "$@"\n`);
+      assert.strictEqual(yield* resolveHermesGitCheckout(launcher), NodeFS.realpathSync(root));
+
+      // A pip console script imports Hermes from site-packages: no checkout.
+      NodeFS.writeFileSync(launcher, "#!/usr/bin/python3\nfrom hermes_cli.main import main\n");
+      assert.isNull(yield* resolveHermesGitCheckout(launcher));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

@@ -52,7 +52,7 @@ const DRIVER_KIND = ProviderDriverKind.make("hermes");
 // `hermes --version` reports.
 const HERMES_RELEASE_REPOSITORY = "NousResearch/hermes-agent";
 // `hermes update` pulls and reinstalls a git checkout in place, so it is only
-// offered when the binary is `<checkout>/venv/bin/hermes` beside a `.git`.
+// offered when the binary (or the launcher it sits behind) is in one.
 // Nix, Docker, apt and pip installs stay manual; `hermes update` refuses them.
 // `--yes` accepts its config-migration and stash-restore prompts, since the
 // runner has no terminal to answer them. It runs with the instance's

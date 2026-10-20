@@ -77,23 +77,44 @@ export const hermesPatchedSourceFiles = (
   return [...files];
 };
 
+/** A launcher is a few lines of shell; anything larger is the program itself. */
+const LAUNCHER_MAX_BYTES = 64 * 1024;
+const LAUNCHER_MAX_HOPS = 3;
+const LAUNCHER_EXEC = /^\s*exec\s+["']?(\/[^\s"']+)/m;
+
 /**
  * The git checkout a Hermes executable was installed from, or null.
  *
- * A source install puts the binary at `<checkout>/venv/bin/hermes`. Nix,
- * Docker, apt and pip installs have no checkout beside them; `hermes update`
- * refuses those too.
+ * A source install puts the binary at `<checkout>/venv/bin/hermes`, or at
+ * `<checkout>/.hermes/bin/hermes` behind a `sh` launcher on PATH that `exec`s
+ * it, so launchers are followed. Nix, Docker, apt and pip installs have no
+ * checkout beside them; `hermes update` refuses those too.
  */
 export const resolveHermesGitCheckout = Effect.fn("resolveHermesGitCheckout")(function* (
   realCommandPath: string,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const checkoutRoot = path.dirname(path.dirname(path.dirname(realCommandPath)));
-  const isGitCheckout = yield* fileSystem
-    .exists(path.join(checkoutRoot, ".git"))
-    .pipe(Effect.orElseSucceed(() => false));
-  return isGitCheckout ? checkoutRoot : null;
+  let candidate = realCommandPath;
+  for (let hop = 0; hop <= LAUNCHER_MAX_HOPS; hop++) {
+    const checkoutRoot = path.dirname(path.dirname(path.dirname(candidate)));
+    const isGitCheckout = yield* fileSystem
+      .exists(path.join(checkoutRoot, ".git"))
+      .pipe(Effect.orElseSucceed(() => false));
+    if (isGitCheckout) return checkoutRoot;
+    const script = yield* fileSystem.stat(candidate).pipe(
+      Effect.flatMap((info) =>
+        info.type === "File" && Number(info.size) <= LAUNCHER_MAX_BYTES
+          ? fileSystem.readFileString(candidate)
+          : Effect.succeed(""),
+      ),
+      Effect.orElseSucceed(() => ""),
+    );
+    const target = script.startsWith("#!") ? LAUNCHER_EXEC.exec(script)?.[1] : undefined;
+    if (target === undefined) return null;
+    candidate = yield* fileSystem.realPath(target).pipe(Effect.orElseSucceed(() => target));
+  }
+  return null;
 });
 
 /**
@@ -630,12 +651,6 @@ export const readHermesPatches = Effect.fn("readHermesPatches")(function* (
   }
   return statuses;
 }, Effect.scoped);
-
-/** True when HEAD is not on a branch, which `hermes update` cannot move. */
-export const isHermesCheckoutDetached = (checkoutRoot: string) =>
-  runGit(checkoutRoot, ["symbolic-ref", "--quiet", "HEAD"]).pipe(
-    Effect.map((result) => result.code !== 0),
-  );
 
 /**
  * Applies (`forward`) or removes (`reverse`) one patch, returning whether git

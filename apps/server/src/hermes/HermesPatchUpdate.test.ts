@@ -124,6 +124,8 @@ const makeHermesWith = (options: { readonly updateHelp: string }) =>
         `if [ -p "${NodePath.join(base, "started")}" ]; then echo started > "${NodePath.join(base, "started")}"; exec sleep 60; fi`,
         `if [ -f "${NodePath.join(base, "noisy")}" ]; then yes "resolving dependency" | head -c 2000000 >&2; fi`,
         `if [ -f "${NodePath.join(base, "fail")}" ]; then echo "network unreachable" >&2; exit 1; fi`,
+        // A release channel lands detached at the release commit.
+        `if [ -f "${NodePath.join(base, "release")}" ]; then cd "${root}" && git fetch --quiet && exec git checkout --quiet --detach origin/main; fi`,
         // Rebases, as a local commit on top of Hermes would be carried along.
         `cd "${root}" && git -c user.name=t -c user.email=t@t pull --quiet --rebase`,
         "",
@@ -447,18 +449,24 @@ describe("HermesPatchService.updateHermes", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("refuses on a detached HEAD, which an update cannot move", () =>
+  it.effect("updates a detached HEAD, which hermes update moves itself", () =>
     Effect.gen(function* () {
       const hermes = yield* makeHermes;
       const patch = hermes.patch([hermes.newerVersion, hermes.olderVersion]);
       git(hermes.root, "checkout", "--quiet", "--detach");
+      NodeFS.writeFileSync(NodePath.join(hermes.base, "release"), "");
       yield* Effect.gen(function* () {
         const service = yield* HermesPatchService;
-        const snapshot = yield* service.list;
-        assert.isFalse(snapshot.canUpdateHermes);
-        const error = yield* Effect.flip(service.updateHermes);
-        assert.strictEqual(error.reason, "wrongState");
-        assert.isFalse(NodeFS.existsSync(hermes.log));
+        yield* service.apply({ patchId: patch.id });
+        const before = yield* service.list;
+        assert.isTrue(before.canUpdateHermes);
+        assert.isFalse(before.detachedHead);
+
+        const result = yield* service.updateHermes;
+        assert.isFalse(result.updateFailed);
+        assert.deepStrictEqual(result.reapplied, [patch.id]);
+        assert.strictEqual(hermes.head(), hermes.newer);
+        assert.strictEqual(hermes.read(), "backend = resolve()\nremote_cwd = configured()\n");
       }).pipe(withService(hermes.binaryPath, [patch]));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
