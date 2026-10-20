@@ -57,7 +57,6 @@ import {
   HERMES_PATCHES,
   HERMES_UPDATE_LOCK_KEY,
   hermesPatchedSourceFiles,
-  isHermesCheckoutDetached,
   readHermesDirtyPaths,
   readHermesHeadCommit,
   readHermesPatches,
@@ -259,17 +258,16 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
     provide(
       Effect.all({
         patches: readHermesPatches(checkout.checkoutRoot, shippedPatches),
-        detachedHead: isHermesCheckoutDetached(checkout.checkoutRoot),
         headCommit: readHermesHeadCommit(checkout.checkoutRoot),
         gateway: readGatewayStatus(checkout),
       }),
     ).pipe(
-      Effect.map(({ patches, detachedHead, headCommit, gateway }): HermesPatchesSnapshot => ({
+      Effect.map(({ patches, headCommit, gateway }): HermesPatchesSnapshot => ({
         availability: "ready",
         checkoutPath: checkout.checkoutRoot,
-        detachedHead,
+        detachedHead: false,
         ...(headCommit === null ? {} : { headCommit }),
-        canUpdateHermes: !detachedHead,
+        canUpdateHermes: true,
         patches,
         gateway: gateway.status,
         gatewayRestartFailure: gateway.failure,
@@ -479,13 +477,6 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
     }
     const { checkoutRoot } = checkout;
     const before = yield* readSnapshot(checkout);
-    if (before.detachedHead) {
-      return yield* new HermesPatchError({
-        reason: "wrongState",
-        detail:
-          "The Hermes checkout is on a detached HEAD, so updating cannot move it. Check out main in the checkout first.",
-      });
-    }
     // A patch whose change HEAD already holds (committed, or now carried
     // upstream) stays put: `hermes update` moves HEAD, not the working tree.
     const inHead = yield* provide(readHermesPatchesInHead(checkoutRoot, shippedPatches)).pipe(

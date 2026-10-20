@@ -102,14 +102,15 @@ export const HermesPatchesSnapshot = Schema.Struct({
   /** The checkout the states describe; null unless `ready`. */
   checkoutPath: Schema.NullOr(TrimmedNonEmptyString),
   /**
-   * True when the checkout is on a detached HEAD. `hermes update` cannot move
-   * one, so Hermes stays on that commit however often it is updated.
+   * Always false. Older clients warned that `hermes update` cannot move a
+   * detached HEAD; it does, and release channels leave the checkout detached
+   * on purpose. Kept because those clients require the field.
    */
   detachedHead: Schema.Boolean,
   /** The checkout's HEAD, abbreviated. Absent unless `ready`, and from older servers. */
   headCommit: Schema.optionalKey(TrimmedNonEmptyString),
   /**
-   * True when `hermesPatchUpdateHermes` can run: a git checkout on a branch.
+   * True when `hermesPatchUpdateHermes` can run: any git checkout.
    * Absent from older servers, which have no such call.
    */
   canUpdateHermes: Schema.optionalKey(Schema.Boolean),

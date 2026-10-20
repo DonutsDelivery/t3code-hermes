@@ -12,7 +12,6 @@ import {
   describeHermesGateway,
   describeHermesPatchesUnavailable,
   describeHermesPatchHint,
-  HERMES_DETACHED_HEAD_WARNING,
   HERMES_PATCH_STATE_LABELS,
   HERMES_UPDATE_DESCRIPTION,
   HERMES_UPDATE_LABEL,
@@ -513,7 +512,6 @@ function HermesPatchesScreen({ environmentId }: { readonly environmentId: Enviro
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       showsVerticalScrollIndicator={false}
     >
-      {snapshot.detachedHead ? <NoticeText text={HERMES_DETACHED_HEAD_WARNING} /> : null}
       {shouldOfferHermesUpdate(snapshot) || patches.updating ? (
         <View className="gap-2">
           <NoticeText text={HERMES_UPDATE_DESCRIPTION} />

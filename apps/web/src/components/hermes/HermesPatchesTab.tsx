@@ -7,7 +7,6 @@ import {
   describeHermesGateway,
   describeHermesPatchesUnavailable,
   describeHermesPatchHint,
-  HERMES_DETACHED_HEAD_WARNING,
   HERMES_PATCH_STATE_LABELS,
   HERMES_UPDATE_DESCRIPTION,
   HERMES_UPDATE_LABEL,
@@ -176,12 +175,6 @@ export function HermesPatchesTab({
           {updateSummary}
         </p>
       )}
-      {snapshot.detachedHead ? (
-        <Alert variant="warning">
-          <TriangleAlertIcon />
-          <AlertDescription>{HERMES_DETACHED_HEAD_WARNING}</AlertDescription>
-        </Alert>
-      ) : null}
       {gateway !== null ? (
         <Alert variant={gateway.tone}>
           {gateway.tone === "info" ? <InfoIcon /> : <TriangleAlertIcon />}
@@ -324,15 +317,6 @@ export function HermesPatchesEverywhere({
         kind: "summary",
         tone: "info",
         text: work.updateSummary,
-        action: null,
-      });
-    }
-    if (snapshot.detachedHead) {
-      result.push({
-        environmentId,
-        kind: "detached",
-        tone: "warning",
-        text: HERMES_DETACHED_HEAD_WARNING,
         action: null,
       });
     }
