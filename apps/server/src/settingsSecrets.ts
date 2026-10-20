@@ -2,6 +2,7 @@ import {
   AntigravitySettings,
   ClaudeSettings,
   CodexSettings,
+  EasDeviceHostConfig,
   type ServerSettings,
   UsageLimitSourceConfig,
   secretSettingsFields,
@@ -34,6 +35,7 @@ const usageLimitSecretFields = secretSettingsFields(UsageLimitSourceConfig);
 /** Store key the fork used before secrets were schema-declared; keep it so saved keys survive. */
 const HINDSIGHT_API_KEY_SECRET_NAME = "hindsight-api-key";
 const PAPERCLIP_API_KEY_SECRET_NAME = "paperclip-api-key";
+const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -186,5 +188,23 @@ export function mapSettingsSecrets(
     paperclip: paperclipKey.length > 0 ? { ...paperclip, apiKey: paperclipKey } : paperclip,
   };
 
-  return { ...settings, providerInstances, sourceControlHosts, usageLimitSources, integrations };
+  const easDeviceHosts = settings.easDeviceHosts.map(
+    (host) =>
+      mapFields(
+        host,
+        easDeviceHostSecretFields,
+        (field, serverHost) =>
+          `device-host-${encode(host.id)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ) as EasDeviceHostConfig,
+  );
+
+  return {
+    ...settings,
+    providerInstances,
+    sourceControlHosts,
+    usageLimitSources,
+    easDeviceHosts,
+    integrations,
+  };
 }
