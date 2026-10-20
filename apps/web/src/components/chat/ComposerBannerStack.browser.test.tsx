@@ -61,6 +61,13 @@ it("only offers notice details when the description cannot fit", async () => {
 });
 
 it("keeps only the usage limit attached while an active goal waits in the collapsible stack", async () => {
+  // The stack expands on pointerenter, and the cursor persists across browser test files.
+  const parking = document.createElement("div");
+  parking.style.cssText = "position:fixed;inset:auto 0 0;height:40px";
+  document.body.append(parking);
+  await userEvent.hover(parking);
+  parking.remove();
+
   await act(async () =>
     root.render(
       <ComposerBannerStack

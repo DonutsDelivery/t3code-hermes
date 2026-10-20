@@ -334,7 +334,8 @@ function parseRemoteFetchUrls(stdout: string): Map<string, string> {
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
-    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(trimmed);
+    // Partial clones append the promisor filter, e.g. `(fetch) [blob:none]`.
+    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(trimmed);
     if (!match) continue;
     const [, remoteName = "", remoteUrl = "", direction = ""] = match;
     if (direction !== "fetch" || remoteName.length === 0 || remoteUrl.length === 0) {
@@ -442,7 +443,17 @@ const GIT_FAILURE_REASON_PATTERNS: ReadonlyArray<readonly [RegExp, GitCommandFai
   // Quoted-path forms only: an unquoted `fatal: <thing> already exists` also
   // covers tag and ref collisions, which are not path collisions.
   [/fatal: '[^']+' already exists|destination path .+ already exists/i, "path_already_exists"],
+  // Ambiguous revision/path and pathspec failures can name files, so omit them.
+  // Anchor to a diagnostic line to avoid matching quoted paths in other errors.
+  [
+    /^fatal: (?:invalid reference: |not a valid object name|needed a single revision|bad revision |'.+' is not a commit and a branch '.+' cannot be created from it)/im,
+    "ref_not_found",
+  ],
 ];
+
+// Existing non-commit objects share the missing-ref fatal diagnostic; Git
+// distinguishes them with a separate error line.
+const GIT_NOT_A_COMMIT_PATTERN = /^error: .+(?:, not a commit|expected commit type)/im;
 
 // Hooks write to the same stream git does, and nothing distinguishes their text
 // from git's: a pre-push hook echoing "authentication failed" would otherwise
@@ -470,7 +481,9 @@ function classifyGitFailure(stderr: string): GitCommandFailureReason | null {
   if (diagnostics.length === 0) return null;
   if (isNonRepositoryGitStderr(diagnostics)) return "not_a_repository";
   for (const [pattern, reason] of GIT_FAILURE_REASON_PATTERNS) {
-    if (pattern.test(diagnostics)) return reason;
+    if (!pattern.test(diagnostics)) continue;
+    if (reason === "ref_not_found" && GIT_NOT_A_COMMIT_PATTERN.test(diagnostics)) continue;
+    return reason;
   }
   return null;
 }
@@ -3499,7 +3512,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const onCheckoutProgress = progress?.onCheckoutProgress;
 
     const checkoutWorkers = (yield* readConfigValue(input.cwd, "checkout.workers")) ?? "0";
-    yield* executeGit(
+    yield* executeGitWithStableDiagnostics(
       "GitVcsDriver.createWorktree",
       input.cwd,
       ["-c", `checkout.workers=${checkoutWorkers}`, ...args],
@@ -3510,7 +3523,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           ? {
               // Git only prints checkout progress when stderr is a tty or the
               // delay elapsed. GIT_PROGRESS_DELAY=0 forces it through the pipe.
-              env: { GIT_PROGRESS_DELAY: "0", LC_ALL: "C" },
+              env: { GIT_PROGRESS_DELAY: "0" },
               progress: {
                 onStderrLine: (line) => {
                   const parsed = parseGitCheckoutProgressLine(line);
@@ -3601,7 +3614,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           "config",
           `branch.${input.newRefName}.gh-merge-base`,
           baseBranch,
-        ]);
+        ]).pipe(
+          Effect.catchTags({
+            GitCommandError: () =>
+              Effect.logWarning(
+                "worktree base-ref configuration failed; using base-branch fallback",
+              ),
+          }),
+        );
       }
     }
 
@@ -4024,10 +4044,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       yield* refuseOptionLikeRefName("GitVcsDriver.switchRef", input.cwd, checkoutArgs.at(-1));
 
       // A stale ref must not turn into a path checkout that discards local edits.
-      yield* executeGit("GitVcsDriver.switchRef.checkout", input.cwd, [...checkoutArgs, "--"], {
-        timeoutMs: 10_000,
-        fallbackErrorDetail: "git checkout failed",
-      });
+      yield* executeGitWithStableDiagnostics(
+        "GitVcsDriver.switchRef.checkout",
+        input.cwd,
+        [...checkoutArgs, "--"],
+        {
+          timeoutMs: 10_000,
+          fallbackErrorDetail: "git checkout failed",
+        },
+      );
 
       const refName = yield* runGitStdout("GitVcsDriver.switchRef.currentBranch", input.cwd, [
         "branch",
