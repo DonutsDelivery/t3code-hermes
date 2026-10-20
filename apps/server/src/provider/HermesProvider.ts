@@ -86,48 +86,46 @@ const HERMES_BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
-export function buildInitialHermesProviderSnapshot(
-  hermesSettings: HermesSettings,
-): Effect.Effect<ServerProviderDraft> {
-  return Effect.gen(function* () {
-    const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
-    const models = hermesModelsFromSettings(
-      hermesSettings.customModels,
-      readHermesReasoningContext(),
-    );
+export const buildInitialHermesProviderSnapshot = Effect.fn(
+  "HermesProvider.buildInitialHermesProviderSnapshot",
+)(function* (hermesSettings: HermesSettings): Effect.fn.Return<ServerProviderDraft> {
+  const checkedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+  const models = hermesModelsFromSettings(
+    hermesSettings.customModels,
+    readHermesReasoningContext(),
+  );
 
-    if (!hermesSettings.enabled) {
-      return buildServerProvider({
-        presentation: HERMES_PRESENTATION,
-        enabled: false,
-        checkedAt,
-        models,
-        probe: {
-          installed: false,
-          version: null,
-          status: "warning",
-          auth: { status: "unknown" },
-          message: "Hermes is disabled in T3 Code settings.",
-        },
-      });
-    }
-
+  if (!hermesSettings.enabled) {
     return buildServerProvider({
       presentation: HERMES_PRESENTATION,
-      enabled: true,
+      enabled: false,
       checkedAt,
       models,
-      slashCommands: HERMES_SLASH_COMMANDS,
       probe: {
-        installed: true,
+        installed: false,
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Checking Hermes CLI availability...",
+        message: "Hermes is disabled in T3 Code settings.",
       },
     });
+  }
+
+  return buildServerProvider({
+    presentation: HERMES_PRESENTATION,
+    enabled: true,
+    checkedAt,
+    models,
+    slashCommands: HERMES_SLASH_COMMANDS,
+    probe: {
+      installed: true,
+      version: null,
+      status: "warning",
+      auth: { status: "unknown" },
+      message: "Checking Hermes CLI availability...",
+    },
   });
-}
+});
 
 /**
  * Attaches the reasoning-effort selector to every model that has one, keeping
@@ -257,12 +255,12 @@ interface HermesAcpDiscovery {
  */
 const HERMES_ACP_COMMAND_ADVERTISEMENT_TIMEOUT_MS = 1_000;
 
-const discoverHermesModelsViaAcp = (
-  hermesSettings: HermesSettings,
-  environment: NodeJS.ProcessEnv = process.env,
-  commandAdvertisementTimeoutMs: number = HERMES_ACP_COMMAND_ADVERTISEMENT_TIMEOUT_MS,
-) =>
-  Effect.gen(function* () {
+const discoverHermesModelsViaAcp = Effect.fn("HermesProvider.discoverHermesModelsViaAcp")(
+  function* (
+    hermesSettings: HermesSettings,
+    environment: NodeJS.ProcessEnv = process.env,
+    commandAdvertisementTimeoutMs: number = HERMES_ACP_COMMAND_ADVERTISEMENT_TIMEOUT_MS,
+  ) {
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const acp = yield* makeHermesAcpRuntime({
       hermesSettings,
@@ -284,25 +282,26 @@ const discoverHermesModelsViaAcp = (
       slashCommands: withCompactCommand(slashCommands),
       upstreams: deriveConfiguredUpstreams(started.sessionSetupResult.models),
     } satisfies HermesAcpDiscovery;
-  }).pipe(Effect.scoped);
+  },
+  Effect.scoped,
+);
 
-const runHermesVersionCommand = (
+const runHermesVersionCommand = Effect.fn("HermesProvider.runHermesVersionCommand")(function* (
   hermesSettings: HermesSettings,
   environment: NodeJS.ProcessEnv = process.env,
-) =>
-  Effect.gen(function* () {
-    const command = hermesSettings.binaryPath || "hermes";
-    const spawnCommand = yield* resolveSpawnCommand(command, ["--version"], {
-      env: environment,
-    });
-    return yield* spawnAndCollect(
-      command,
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        env: environment,
-        shell: spawnCommand.shell,
-      }),
-    );
+) {
+  const command = hermesSettings.binaryPath || "hermes";
+  const spawnCommand = yield* resolveSpawnCommand(command, ["--version"], {
+    env: environment,
   });
+  return yield* spawnAndCollect(
+    command,
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      env: environment,
+      shell: spawnCommand.shell,
+    }),
+  );
+});
 
 export const checkHermesProviderStatus = Effect.fn("checkHermesProviderStatus")(function* (
   hermesSettings: HermesSettings,

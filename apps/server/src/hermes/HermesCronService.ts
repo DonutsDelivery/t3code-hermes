@@ -465,77 +465,79 @@ export const make = Effect.gen(function* () {
    * contradictory records; writing it from outside would race its scheduler
    * for no benefit. `pause`/`resume` are stable CLI verbs.
    */
-  const setEnabled = (input: HermesCronSetEnabledInput) =>
-    Effect.gen(function* () {
-      const instance = yield* requireEnabled;
-      const snapshot = yield* currentSnapshot;
-      if (!snapshot.jobs.some((job) => job.id === input.jobId)) {
-        return yield* new HermesCronError({
-          reason: "unknownJob",
-          detail: "That scheduled task no longer exists.",
-        });
-      }
-      if (/[\r\n]/.test(input.jobId)) {
-        return yield* new HermesCronError({
-          reason: "unknownJob",
-          detail: "The scheduled task id must not contain carriage returns or line feeds.",
-        });
-      }
-
-      const binary = instance.settings.binaryPath || "hermes";
-      const args = ["cron", input.enabled ? "resume" : "pause", input.jobId];
-      const spawnCommand = yield* resolveSpawnCommand(binary, args, { env: instance.env }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new HermesCronError({
-              reason: "commandFailed",
-              detail: "Could not run the hermes CLI.",
-              cause,
-            }),
-        ),
-      );
-      const result = yield* spawnAndCollect(
-        binary,
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          env: instance.env,
-          shell: spawnCommand.shell,
-        }),
-      ).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        Effect.mapError(
-          (cause) =>
-            new HermesCronError({
-              reason: "commandFailed",
-              detail: `Could not ${input.enabled ? "resume" : "pause"} the task.`,
-              cause,
-            }),
-        ),
-      );
-      if (result.code !== 0) {
-        return yield* new HermesCronError({
-          reason: "commandFailed",
-          detail: `hermes cron ${input.enabled ? "resume" : "pause"} exited with code ${result.code}.`,
-        });
-      }
-
-      // Re-read rather than patching the cached snapshot: Hermes may also have
-      // cleared a pause marker or recomputed `next_run_at`.
-      return yield* poll;
-    });
-
-  const setMuted = (input: HermesCronSetMutedInput) =>
-    Effect.gen(function* () {
-      yield* requireEnabled;
-      const next = yield* Ref.updateAndGet(mutedRef, (muted) => {
-        const updated = new Set(muted);
-        if (input.muted) updated.add(input.jobId);
-        else updated.delete(input.jobId);
-        return updated;
+  const setEnabled = Effect.fn("HermesCronService.setEnabled")(function* (
+    input: HermesCronSetEnabledInput,
+  ) {
+    const instance = yield* requireEnabled;
+    const snapshot = yield* currentSnapshot;
+    if (!snapshot.jobs.some((job) => job.id === input.jobId)) {
+      return yield* new HermesCronError({
+        reason: "unknownJob",
+        detail: "That scheduled task no longer exists.",
       });
-      yield* persistMuteState(next);
-      // Mute is reflected on every job row, so the snapshot genuinely changed.
-      return yield* poll;
+    }
+    if (/[\r\n]/.test(input.jobId)) {
+      return yield* new HermesCronError({
+        reason: "unknownJob",
+        detail: "The scheduled task id must not contain carriage returns or line feeds.",
+      });
+    }
+
+    const binary = instance.settings.binaryPath || "hermes";
+    const args = ["cron", input.enabled ? "resume" : "pause", input.jobId];
+    const spawnCommand = yield* resolveSpawnCommand(binary, args, { env: instance.env }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new HermesCronError({
+            reason: "commandFailed",
+            detail: "Could not run the hermes CLI.",
+            cause,
+          }),
+      ),
+    );
+    const result = yield* spawnAndCollect(
+      binary,
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        env: instance.env,
+        shell: spawnCommand.shell,
+      }),
+    ).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.mapError(
+        (cause) =>
+          new HermesCronError({
+            reason: "commandFailed",
+            detail: `Could not ${input.enabled ? "resume" : "pause"} the task.`,
+            cause,
+          }),
+      ),
+    );
+    if (result.code !== 0) {
+      return yield* new HermesCronError({
+        reason: "commandFailed",
+        detail: `hermes cron ${input.enabled ? "resume" : "pause"} exited with code ${result.code}.`,
+      });
+    }
+
+    // Re-read rather than patching the cached snapshot: Hermes may also have
+    // cleared a pause marker or recomputed `next_run_at`.
+    return yield* poll;
+  });
+
+  const setMuted = Effect.fn("HermesCronService.setMuted")(function* (
+    input: HermesCronSetMutedInput,
+  ) {
+    yield* requireEnabled;
+    const next = yield* Ref.updateAndGet(mutedRef, (muted) => {
+      const updated = new Set(muted);
+      if (input.muted) updated.add(input.jobId);
+      else updated.delete(input.jobId);
+      return updated;
     });
+    yield* persistMuteState(next);
+    // Mute is reflected on every job row, so the snapshot genuinely changed.
+    return yield* poll;
+  });
 
   const subscribe = Effect.gen(function* () {
     yield* Effect.addFinalizer(() => releasePoller.pipe(Effect.ignore));

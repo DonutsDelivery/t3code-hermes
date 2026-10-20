@@ -178,63 +178,64 @@ export function readHermesConfigSync(configFile: string): unknown {
  * containers we created keeps repeated toggling from leaving `agent: {}`
  * behind in a file we do not own.
  */
-export const writeHermesReasoningOverride = (input: {
+export const writeHermesReasoningOverride = Effect.fn(
+  "hermesReasoningConfig.writeHermesReasoningOverride",
+)(function* (input: {
   readonly configFile: string;
   readonly slug: string;
   readonly level: HermesReasoningLevel | null;
-}): Effect.Effect<HermesReasoningWriteOutcome, never, FileSystem.FileSystem | Path.Path> =>
-  Effect.gen(function* () {
-    const key = hermesReasoningOverrideKey(input.slug);
-    if (key === null) return { _tag: "unchanged" } as const;
+}): Effect.fn.Return<HermesReasoningWriteOutcome, never, FileSystem.FileSystem | Path.Path> {
+  const key = hermesReasoningOverrideKey(input.slug);
+  if (key === null) return { _tag: "unchanged" } as const;
 
-    const fs = yield* FileSystem.FileSystem;
-    const existing = yield* fs
-      .readFileString(input.configFile)
-      .pipe(Effect.orElseSucceed(() => null));
+  const fs = yield* FileSystem.FileSystem;
+  const existing = yield* fs
+    .readFileString(input.configFile)
+    .pipe(Effect.orElseSucceed(() => null));
 
-    // Nothing to clear in a file that does not exist yet, and no reason to
-    // create one just to say "default".
-    if (existing === null && input.level === null) return { _tag: "unchanged" } as const;
+  // Nothing to clear in a file that does not exist yet, and no reason to
+  // create one just to say "default".
+  if (existing === null && input.level === null) return { _tag: "unchanged" } as const;
 
-    const document = parseDocument(existing ?? "");
-    if (document.errors.length > 0) {
-      // Never rewrite a file we could not read. A hand-edited config with a
-      // typo in an unrelated section must survive T3 Code touching it.
-      return {
-        _tag: "parseFailed",
-        detail: document.errors[0]?.message ?? "unknown YAML parse error",
-      } as const;
-    }
+  const document = parseDocument(existing ?? "");
+  if (document.errors.length > 0) {
+    // Never rewrite a file we could not read. A hand-edited config with a
+    // typo in an unrelated section must survive T3 Code touching it.
+    return {
+      _tag: "parseFailed",
+      detail: document.errors[0]?.message ?? "unknown YAML parse error",
+    } as const;
+  }
 
+  const overrides = document.getIn([AGENT_KEY, OVERRIDES_KEY]);
+  const existingKey = existingOverrideKey(overrides, input.slug);
+  const resolvedKey = existingKey ?? key;
+  const currentLevel = normalizeLevel(
+    existingKey === null ? undefined : document.getIn([AGENT_KEY, OVERRIDES_KEY, existingKey]),
+  );
+  if (currentLevel === input.level) return { _tag: "unchanged" } as const;
+
+  if (input.level === null) {
+    if (existingKey === null) return { _tag: "unchanged" } as const;
+    document.deleteIn([AGENT_KEY, OVERRIDES_KEY, existingKey]);
     const overrides = document.getIn([AGENT_KEY, OVERRIDES_KEY]);
-    const existingKey = existingOverrideKey(overrides, input.slug);
-    const resolvedKey = existingKey ?? key;
-    const currentLevel = normalizeLevel(
-      existingKey === null ? undefined : document.getIn([AGENT_KEY, OVERRIDES_KEY, existingKey]),
-    );
-    if (currentLevel === input.level) return { _tag: "unchanged" } as const;
-
-    if (input.level === null) {
-      if (existingKey === null) return { _tag: "unchanged" } as const;
-      document.deleteIn([AGENT_KEY, OVERRIDES_KEY, existingKey]);
-      const overrides = document.getIn([AGENT_KEY, OVERRIDES_KEY]);
-      if (isMap(overrides) && overrides.items.length === 0) {
-        document.deleteIn([AGENT_KEY, OVERRIDES_KEY]);
-        const agent = document.getIn([AGENT_KEY]);
-        if (isMap(agent) && agent.items.length === 0) document.deleteIn([AGENT_KEY]);
-      }
-    } else {
-      // `setIn` builds the `agent:` / `reasoning_overrides:` containers itself,
-      // including on a document parsed from an empty file.
-      document.setIn([AGENT_KEY, OVERRIDES_KEY, resolvedKey], input.level);
+    if (isMap(overrides) && overrides.items.length === 0) {
+      document.deleteIn([AGENT_KEY, OVERRIDES_KEY]);
+      const agent = document.getIn([AGENT_KEY]);
+      if (isMap(agent) && agent.items.length === 0) document.deleteIn([AGENT_KEY]);
     }
+  } else {
+    // `setIn` builds the `agent:` / `reasoning_overrides:` containers itself,
+    // including on a document parsed from an empty file.
+    document.setIn([AGENT_KEY, OVERRIDES_KEY, resolvedKey], input.level);
+  }
 
-    const written = yield* writeFileStringAtomically({
-      filePath: input.configFile,
-      contents: document.toString(),
-    }).pipe(Effect.result);
-    if (Result.isFailure(written)) {
-      return { _tag: "writeFailed", detail: written.failure._tag } as const;
-    }
-    return { _tag: "written", level: input.level } as const;
-  });
+  const written = yield* writeFileStringAtomically({
+    filePath: input.configFile,
+    contents: document.toString(),
+  }).pipe(Effect.result);
+  if (Result.isFailure(written)) {
+    return { _tag: "writeFailed", detail: written.failure._tag } as const;
+  }
+  return { _tag: "written", level: input.level } as const;
+});

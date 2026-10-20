@@ -342,26 +342,27 @@ export const make = Effect.gen(function* () {
    * Hermes' Hindsight config, read fresh each time: a handful of small local
    * files, and caching them would make an edit in Hermes look ignored.
    */
-  const readHermesConfig = (environment: NodeJS.ProcessEnv) =>
-    Effect.gen(function* () {
-      const paths = resolveHermesHindsightPaths(environment);
-      let config: { readonly path: string; readonly value: unknown } | null = null;
-      for (const path of paths.configFiles) {
-        const raw = yield* readFileOrNull(path);
-        if (raw === null) continue;
-        const value = yield* decodeJsonString(raw).pipe(Effect.orElseSucceed(() => null));
-        // Hermes skips a malformed file and tries the next, so this does too.
-        if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
-        config = { path, value };
-        break;
-      }
-      const dotenv = yield* readFileOrNull(paths.dotenvFile);
-      return resolveHermesHindsightConfig({
-        config,
-        // Hermes' own `.env` outranks the shell it was started from.
-        environment: { ...environment, ...(dotenv === null ? {} : parseDotenv(dotenv)) },
-      });
+  const readHermesConfig = Effect.fn("HindsightService.readHermesConfig")(function* (
+    environment: NodeJS.ProcessEnv,
+  ) {
+    const paths = resolveHermesHindsightPaths(environment);
+    let config: { readonly path: string; readonly value: unknown } | null = null;
+    for (const path of paths.configFiles) {
+      const raw = yield* readFileOrNull(path);
+      if (raw === null) continue;
+      const value = yield* decodeJsonString(raw).pipe(Effect.orElseSucceed(() => null));
+      // Hermes skips a malformed file and tries the next, so this does too.
+      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+      config = { path, value };
+      break;
+    }
+    const dotenv = yield* readFileOrNull(paths.dotenvFile);
+    return resolveHermesHindsightConfig({
+      config,
+      // Hermes' own `.env` outranks the shell it was started from.
+      environment: { ...environment, ...(dotenv === null ? {} : parseDotenv(dotenv)) },
     });
+  });
 
   const resolve: Effect.Effect<ResolvedHindsight> = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(Effect.orElseSucceed(() => null));
@@ -400,50 +401,49 @@ export const make = Effect.gen(function* () {
    * decode is `incompatible`, and anything else Hindsight says is
    * `requestFailed` with its status code.
    */
-  const send = <A, I>(
+  const send = Effect.fn("HindsightService.send")(function* <A, I>(
     request: HttpClientRequest.HttpClientRequest,
     schema: Schema.Codec<A, I, never, never>,
     options: { readonly apiKey: string | null; readonly timeout: Duration.Duration },
-  ): Effect.Effect<A, HindsightError> =>
-    Effect.gen(function* () {
-      const response = yield* client.execute(authorized(request, options.apiKey)).pipe(
-        Effect.timeoutOption(options.timeout),
-        Effect.orElseSucceed(() => Option.none()),
-      );
+  ): Effect.fn.Return<A, HindsightError> {
+    const response = yield* client.execute(authorized(request, options.apiKey)).pipe(
+      Effect.timeoutOption(options.timeout),
+      Effect.orElseSucceed(() => Option.none()),
+    );
 
-      if (Option.isNone(response)) {
-        return yield* new HindsightError({
-          reason: "offline",
-          detail: "Hindsight did not answer.",
-        });
-      }
+    if (Option.isNone(response)) {
+      return yield* new HindsightError({
+        reason: "offline",
+        detail: "Hindsight did not answer.",
+      });
+    }
 
-      const httpResponse = response.value;
-      if (httpResponse.status === 404) {
-        return yield* new HindsightError({
-          reason: "unknownBank",
-          detail: "Hindsight does not have that memory bank.",
-        });
-      }
-      if (httpResponse.status < 200 || httpResponse.status >= 300) {
-        return yield* new HindsightError({
-          reason: "requestFailed",
-          detail: `Hindsight answered with status ${httpResponse.status}.`,
-        });
-      }
+    const httpResponse = response.value;
+    if (httpResponse.status === 404) {
+      return yield* new HindsightError({
+        reason: "unknownBank",
+        detail: "Hindsight does not have that memory bank.",
+      });
+    }
+    if (httpResponse.status < 200 || httpResponse.status >= 300) {
+      return yield* new HindsightError({
+        reason: "requestFailed",
+        detail: `Hindsight answered with status ${httpResponse.status}.`,
+      });
+    }
 
-      return yield* httpResponse.json.pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(schema)),
-        Effect.mapError(
-          (cause) =>
-            new HindsightError({
-              reason: "incompatible",
-              detail: "Hindsight answered in a shape this version of T3 Code does not understand.",
-              cause,
-            }),
-        ),
-      );
-    });
+    return yield* httpResponse.json.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(schema)),
+      Effect.mapError(
+        (cause) =>
+          new HindsightError({
+            reason: "incompatible",
+            detail: "Hindsight answered in a shape this version of T3 Code does not understand.",
+            cause,
+          }),
+      ),
+    );
+  });
 
   /**
    * The cached compatibility verdict, probing once if needed.
@@ -462,57 +462,58 @@ export const make = Effect.gen(function* () {
    *
    * `refresh` (the panel's retry) forces the probe regardless.
    */
-  const probe = (options: { readonly refresh: boolean }) =>
-    Effect.gen(function* () {
-      const resolved = yield* resolve;
-      const settings = resolved.connection;
-      if (settings === null) {
-        yield* Ref.set(probeRef, null);
-        return { probe: notConfigured(resolved.enabled), connection: null, resolved } as const;
-      }
+  const probe = Effect.fn("HindsightService.probe")(function* (options: {
+    readonly refresh: boolean;
+  }) {
+    const resolved = yield* resolve;
+    const settings = resolved.connection;
+    if (settings === null) {
+      yield* Ref.set(probeRef, null);
+      return { probe: notConfigured(resolved.enabled), connection: null, resolved } as const;
+    }
 
-      const cached = yield* Ref.get(probeRef);
-      if (
-        cached !== null &&
-        !options.refresh &&
-        cached.connection.baseUrl === settings.baseUrl &&
-        cached.connection.apiKey === settings.apiKey &&
-        cached.probe.availability === "ready"
-      ) {
-        return { probe: cached.probe, connection: settings, resolved } as const;
-      }
+    const cached = yield* Ref.get(probeRef);
+    if (
+      cached !== null &&
+      !options.refresh &&
+      cached.connection.baseUrl === settings.baseUrl &&
+      cached.connection.apiKey === settings.apiKey &&
+      cached.probe.availability === "ready"
+    ) {
+      return { probe: cached.probe, connection: settings, resolved } as const;
+    }
 
-      const version = yield* send(
-        HttpClientRequest.get(hindsightUrl(settings.baseUrl, hindsightPaths.version())).pipe(
-          HttpClientRequest.setHeader("accept", "application/json"),
-        ),
-        HindsightVersionResponse,
-        { apiKey: settings.apiKey, timeout: PROBE_TIMEOUT },
-      ).pipe(Effect.result);
+    const version = yield* send(
+      HttpClientRequest.get(hindsightUrl(settings.baseUrl, hindsightPaths.version())).pipe(
+        HttpClientRequest.setHeader("accept", "application/json"),
+      ),
+      HindsightVersionResponse,
+      { apiKey: settings.apiKey, timeout: PROBE_TIMEOUT },
+    ).pipe(Effect.result);
 
-      const next: HindsightProbe = Result.isSuccess(version)
-        ? isCompatibleApiVersion(version.success.api_version)
-          ? { availability: "ready", detail: null, apiVersion: version.success.api_version }
-          : {
-              availability: "incompatible",
-              detail: `Hindsight reports API ${version.success.api_version}, but T3 Code targets ${HINDSIGHT_TARGET_API_VERSION}. The major versions differ, so the panel cannot safely decode its answers.`,
-              apiVersion: version.success.api_version,
-            }
-        : version.failure.reason === "incompatible"
-          ? {
-              availability: "incompatible",
-              detail: `Hindsight did not report a version this build understands. T3 Code targets Hindsight API ${HINDSIGHT_TARGET_API_VERSION}.`,
-              apiVersion: null,
-            }
-          : {
-              availability: "offline",
-              detail: "Hindsight is configured but not answering on this host.",
-              apiVersion: null,
-            };
+    const next: HindsightProbe = Result.isSuccess(version)
+      ? isCompatibleApiVersion(version.success.api_version)
+        ? { availability: "ready", detail: null, apiVersion: version.success.api_version }
+        : {
+            availability: "incompatible",
+            detail: `Hindsight reports API ${version.success.api_version}, but T3 Code targets ${HINDSIGHT_TARGET_API_VERSION}. The major versions differ, so the panel cannot safely decode its answers.`,
+            apiVersion: version.success.api_version,
+          }
+      : version.failure.reason === "incompatible"
+        ? {
+            availability: "incompatible",
+            detail: `Hindsight did not report a version this build understands. T3 Code targets Hindsight API ${HINDSIGHT_TARGET_API_VERSION}.`,
+            apiVersion: null,
+          }
+        : {
+            availability: "offline",
+            detail: "Hindsight is configured but not answering on this host.",
+            apiVersion: null,
+          };
 
-      yield* Ref.set(probeRef, { connection: settings, probe: next });
-      return { probe: next, connection: settings, resolved } as const;
-    });
+    yield* Ref.set(probeRef, { connection: settings, probe: next });
+    return { probe: next, connection: settings, resolved } as const;
+  });
 
   /**
    * Runs a read, turning any failure into a status the panel can render.
@@ -523,7 +524,7 @@ export const make = Effect.gen(function* () {
    * for a read whose failure says nothing about whether the rest of the panel
    * still works — see {@link stats}.
    */
-  const readOrStatus = <A>(
+  const readOrStatus = Effect.fn("HindsightService.readOrStatus")(function* <A>(
     run: (
       settings: HindsightConnection,
       probe: HindsightProbe,
@@ -531,44 +532,40 @@ export const make = Effect.gen(function* () {
     ) => Effect.Effect<A, HindsightError>,
     fallback: (probe: HindsightProbe, resolved: ResolvedHindsight) => A,
     options?: { readonly invalidatesProbe?: boolean },
-  ): Effect.Effect<A> =>
-    Effect.gen(function* () {
-      const probed = yield* probe({ refresh: false });
-      if (probed.connection === null || probed.probe.availability !== "ready") {
-        return fallback(probed.probe, probed.resolved);
-      }
-      const result = yield* run(probed.connection, probed.probe, probed.resolved).pipe(
-        Effect.result,
-      );
-      if (Result.isSuccess(result)) return result.success;
+  ): Effect.fn.Return<A> {
+    const probed = yield* probe({ refresh: false });
+    if (probed.connection === null || probed.probe.availability !== "ready") {
+      return fallback(probed.probe, probed.resolved);
+    }
+    const result = yield* run(probed.connection, probed.probe, probed.resolved).pipe(Effect.result);
+    if (Result.isSuccess(result)) return result.success;
 
-      const availability = availabilityForReadFailure(result.failure.reason);
-      const failed: HindsightProbe = {
-        availability,
-        detail:
-          availability === "offline"
-            ? "Hindsight stopped answering on this host."
-            : result.failure.detail,
-        apiVersion: probed.probe.apiVersion,
-      };
+    const availability = availabilityForReadFailure(result.failure.reason);
+    const failed: HindsightProbe = {
+      availability,
+      detail:
+        availability === "offline"
+          ? "Hindsight stopped answering on this host."
+          : result.failure.detail,
+      apiVersion: probed.probe.apiVersion,
+    };
 
-      if (availability !== "ready" && options?.invalidatesProbe !== false) {
-        yield* Ref.set(probeRef, null);
-      }
-      return fallback(failed, probed.resolved);
-    });
+    if (availability !== "ready" && options?.invalidatesProbe !== false) {
+      yield* Ref.set(probeRef, null);
+    }
+    return fallback(failed, probed.resolved);
+  });
 
   /** A write only runs against a `ready` Hindsight; otherwise it says why not. */
-  const write = <A>(
+  const write = Effect.fn("HindsightService.write")(function* <A>(
     run: (settings: HindsightConnection, probe: HindsightProbe) => Effect.Effect<A, HindsightError>,
-  ): Effect.Effect<A, HindsightError> =>
-    Effect.gen(function* () {
-      const probed = yield* probe({ refresh: false });
-      if (probed.connection === null || probed.probe.availability !== "ready") {
-        return yield* probeFailure(probed.probe);
-      }
-      return yield* run(probed.connection, probed.probe);
-    });
+  ): Effect.fn.Return<A, HindsightError> {
+    const probed = yield* probe({ refresh: false });
+    if (probed.connection === null || probed.probe.availability !== "ready") {
+      return yield* probeFailure(probed.probe);
+    }
+    return yield* run(probed.connection, probed.probe);
+  });
 
   const fetchMentalModels = (settings: HindsightConnection, bank: string, limit: number) =>
     send(

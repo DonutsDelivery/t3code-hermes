@@ -144,54 +144,53 @@ export const make = Effect.gen(function* () {
    * are `unauthorized`, a body that will not decode is `incompatible`, and any
    * other status is `requestFailed` with its code.
    */
-  const get = <A, I>(
+  const get = Effect.fn("PaperclipService.get")(function* <A, I>(
     connection: PaperclipConnection,
     path: string,
     schema: Schema.Codec<A, I, never, never>,
-  ): Effect.Effect<A, PaperclipRequestError> =>
-    Effect.gen(function* () {
-      const response = yield* client
-        .execute(
-          HttpClientRequest.get(`${connection.apiRoot}${path}`).pipe(
-            HttpClientRequest.setHeader("accept", "application/json"),
-            HttpClientRequest.setHeader("authorization", `Bearer ${connection.apiKey}`),
-          ),
-        )
-        .pipe(
-          Effect.timeoutOption(REQUEST_TIMEOUT),
-          Effect.orElseSucceed(() => Option.none()),
-        );
-      if (Option.isNone(response)) {
-        return yield* new PaperclipRequestError({
-          reason: "offline",
-          detail: "Paperclip did not answer.",
-        });
-      }
-      const http = response.value;
-      if (http.status === 401 || http.status === 403) {
-        return yield* new PaperclipRequestError({
-          reason: "unauthorized",
-          detail:
-            "Paperclip rejected the API key. It may have expired or been revoked; save a new one in Settings.",
-        });
-      }
-      if (http.status < 200 || http.status >= 300) {
-        return yield* new PaperclipRequestError({
-          reason: "requestFailed",
-          detail: `Paperclip answered with status ${http.status}.`,
-        });
-      }
-      return yield* http.json.pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(schema)),
-        Effect.mapError(
-          () =>
-            new PaperclipRequestError({
-              reason: "incompatible",
-              detail: "Paperclip answered in a shape this version of T3 Code does not understand.",
-            }),
+  ): Effect.fn.Return<A, PaperclipRequestError> {
+    const response = yield* client
+      .execute(
+        HttpClientRequest.get(`${connection.apiRoot}${path}`).pipe(
+          HttpClientRequest.setHeader("accept", "application/json"),
+          HttpClientRequest.setHeader("authorization", `Bearer ${connection.apiKey}`),
         ),
+      )
+      .pipe(
+        Effect.timeoutOption(REQUEST_TIMEOUT),
+        Effect.orElseSucceed(() => Option.none()),
       );
-    });
+    if (Option.isNone(response)) {
+      return yield* new PaperclipRequestError({
+        reason: "offline",
+        detail: "Paperclip did not answer.",
+      });
+    }
+    const http = response.value;
+    if (http.status === 401 || http.status === 403) {
+      return yield* new PaperclipRequestError({
+        reason: "unauthorized",
+        detail:
+          "Paperclip rejected the API key. It may have expired or been revoked; save a new one in Settings.",
+      });
+    }
+    if (http.status < 200 || http.status >= 300) {
+      return yield* new PaperclipRequestError({
+        reason: "requestFailed",
+        detail: `Paperclip answered with status ${http.status}.`,
+      });
+    }
+    return yield* http.json.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(schema)),
+      Effect.mapError(
+        () =>
+          new PaperclipRequestError({
+            reason: "incompatible",
+            detail: "Paperclip answered in a shape this version of T3 Code does not understand.",
+          }),
+      ),
+    );
+  });
 
   /** A list the overview can live without: a failure leaves it empty. */
   const optionalList = (connection: PaperclipConnection, path: string) =>
@@ -199,76 +198,74 @@ export const make = Effect.gen(function* () {
       Effect.orElseSucceed((): ReadonlyArray<unknown> => []),
     );
 
-  const overview = (_input: PaperclipOverviewInput) =>
-    Effect.gen(function* () {
-      const settings = yield* settingsService.getSettings.pipe(
-        Effect.map((all) => all.integrations.paperclip),
-        Effect.orElseSucceed(() => null),
-      );
-      const connection = settings === null ? null : resolvePaperclipConnection(settings);
-      if (connection === null) {
-        return emptyOverview(status("notConfigured", notConfiguredDetail(settings)));
-      }
-      const webRoot = paperclipWebRoot(connection.apiRoot);
+  const overview = Effect.fn("PaperclipService.overview")(function* (
+    _input: PaperclipOverviewInput,
+  ) {
+    const settings = yield* settingsService.getSettings.pipe(
+      Effect.map((all) => all.integrations.paperclip),
+      Effect.orElseSucceed(() => null),
+    );
+    const connection = settings === null ? null : resolvePaperclipConnection(settings);
+    if (connection === null) {
+      return emptyOverview(status("notConfigured", notConfiguredDetail(settings)));
+    }
+    const webRoot = paperclipWebRoot(connection.apiRoot);
 
-      // Identity first: it says whether the key works at all, and which company to show.
-      const me = yield* get(connection, paperclipPaths.me(), PaperclipMeResponse).pipe(
-        Effect.result,
+    // Identity first: it says whether the key works at all, and which company to show.
+    const me = yield* get(connection, paperclipPaths.me(), PaperclipMeResponse).pipe(Effect.result);
+    if (Result.isFailure(me)) {
+      return emptyOverview(status(me.failure.reason, me.failure.detail), webRoot);
+    }
+    const companyId = connection.companyId ?? me.success.companyIds[0] ?? null;
+    if (companyId === null) {
+      return emptyOverview(
+        status("requestFailed", "This API key is not a member of any Paperclip company."),
+        webRoot,
       );
-      if (Result.isFailure(me)) {
-        return emptyOverview(status(me.failure.reason, me.failure.detail), webRoot);
-      }
-      const companyId = connection.companyId ?? me.success.companyIds[0] ?? null;
-      if (companyId === null) {
-        return emptyOverview(
-          status("requestFailed", "This API key is not a member of any Paperclip company."),
-          webRoot,
-        );
-      }
-      if (!me.success.companyIds.includes(companyId) && me.success.isInstanceAdmin !== true) {
-        return emptyOverview(
-          status("requestFailed", "This API key cannot see the company chosen in Settings."),
-          webRoot,
-        );
-      }
-
-      const [company, dashboard, agents, projects, issues, runs, activity] = yield* Effect.all(
-        [
-          get(connection, paperclipPaths.company(companyId), PaperclipCompanyResponse).pipe(
-            Effect.result,
-          ),
-          get(connection, paperclipPaths.dashboard(companyId), PaperclipDashboardResponse).pipe(
-            Effect.option,
-          ),
-          optionalList(connection, paperclipPaths.agents(companyId)),
-          optionalList(connection, paperclipPaths.projects(companyId)),
-          optionalList(connection, paperclipPaths.issues(companyId)),
-          optionalList(connection, paperclipPaths.runs(companyId)),
-          optionalList(connection, paperclipPaths.activity(companyId)),
-        ],
-        { concurrency: "unbounded" },
+    }
+    if (!me.success.companyIds.includes(companyId) && me.success.isInstanceAdmin !== true) {
+      return emptyOverview(
+        status("requestFailed", "This API key cannot see the company chosen in Settings."),
+        webRoot,
       );
-      if (Result.isFailure(company)) {
-        return emptyOverview(status(company.failure.reason, company.failure.detail), webRoot);
-      }
+    }
 
-      const companyInfo = companyFromResponse(company.success);
-      const allIssues = decodeIssues(issues).map(issueFromRow);
-      return {
-        status: status("ready", null),
-        viewer: viewerFromMe(me.success, companyId),
-        company: companyInfo,
-        dashboard: Option.getOrNull(Option.map(dashboard, dashboardFromResponse)),
-        agents: decodeAgents(agents).map(agentFromRow),
-        projects: decodeProjects(projects).map(projectFromRow),
-        issues: sortIssues(allIssues).slice(0, PAPERCLIP_ISSUE_LIMIT),
-        issuesTruncated: allIssues.length > PAPERCLIP_ISSUE_LIMIT,
-        runs: decodeRuns(runs).map(runFromRow),
-        activity: decodeActivity(activity).map(activityFromRow),
-        webUrl:
-          webRoot === null ? null : `${webRoot}/${encodeURIComponent(companyInfo.issuePrefix)}`,
-      } satisfies PaperclipOverviewResult;
-    }).pipe(Effect.withSpan("PaperclipService.overview"));
+    const [company, dashboard, agents, projects, issues, runs, activity] = yield* Effect.all(
+      [
+        get(connection, paperclipPaths.company(companyId), PaperclipCompanyResponse).pipe(
+          Effect.result,
+        ),
+        get(connection, paperclipPaths.dashboard(companyId), PaperclipDashboardResponse).pipe(
+          Effect.option,
+        ),
+        optionalList(connection, paperclipPaths.agents(companyId)),
+        optionalList(connection, paperclipPaths.projects(companyId)),
+        optionalList(connection, paperclipPaths.issues(companyId)),
+        optionalList(connection, paperclipPaths.runs(companyId)),
+        optionalList(connection, paperclipPaths.activity(companyId)),
+      ],
+      { concurrency: "unbounded" },
+    );
+    if (Result.isFailure(company)) {
+      return emptyOverview(status(company.failure.reason, company.failure.detail), webRoot);
+    }
+
+    const companyInfo = companyFromResponse(company.success);
+    const allIssues = decodeIssues(issues).map(issueFromRow);
+    return {
+      status: status("ready", null),
+      viewer: viewerFromMe(me.success, companyId),
+      company: companyInfo,
+      dashboard: Option.getOrNull(Option.map(dashboard, dashboardFromResponse)),
+      agents: decodeAgents(agents).map(agentFromRow),
+      projects: decodeProjects(projects).map(projectFromRow),
+      issues: sortIssues(allIssues).slice(0, PAPERCLIP_ISSUE_LIMIT),
+      issuesTruncated: allIssues.length > PAPERCLIP_ISSUE_LIMIT,
+      runs: decodeRuns(runs).map(runFromRow),
+      activity: decodeActivity(activity).map(activityFromRow),
+      webUrl: webRoot === null ? null : `${webRoot}/${encodeURIComponent(companyInfo.issuePrefix)}`,
+    } satisfies PaperclipOverviewResult;
+  }, Effect.withSpan("PaperclipService.overview"));
 
   return PaperclipService.of({ overview });
 });

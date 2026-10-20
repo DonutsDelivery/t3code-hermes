@@ -1,8 +1,11 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { resolveMarkdownFileLinkMeta } from "../markdown-links";
+
 import {
   canUseMarkdownFileShellActions,
+  markdownFileCopyMenuItems,
   shouldUseMarkdownFileBrowserPrimaryAction,
   transformChatMarkdownUrl,
 } from "./ChatMarkdown";
@@ -77,5 +80,54 @@ describe("Hermes markdown images", () => {
   it("keeps in-app thread links", () => {
     const threadHref = "t3-thread://v1/env-1/thread-1";
     expect(transformChatMarkdownUrl(threadHref, "href")).toBe(threadHref);
+  });
+});
+
+describe("markdownFileCopyMenuItems", () => {
+  it.each([
+    {
+      name: "project file",
+      href: "/Users/jordan/project/src/main.ts",
+      cwd: "/Users/jordan/project",
+      relative: "src/main.ts",
+      full: "/Users/jordan/project/src/main.ts",
+    },
+    {
+      name: "worktree file with a line and column",
+      href: "src/main.ts:12:3",
+      cwd: "/Users/jordan/project/.claude/worktrees/topic",
+      relative: "src/main.ts:12:3",
+      full: "/Users/jordan/project/.claude/worktrees/topic/src/main.ts:12:3",
+    },
+    {
+      name: "main checkout file outside the thread worktree",
+      href: "/Users/jordan/project/src/main.ts",
+      cwd: "/Users/jordan/project/.claude/worktrees/topic",
+      relative: null,
+      full: "/Users/jordan/project/src/main.ts",
+    },
+  ])("offers accurate clipboard values for $name", ({ href, cwd, relative, full }) => {
+    const meta = resolveMarkdownFileLinkMeta(href, cwd);
+    expect(meta).not.toBeNull();
+    if (!meta) throw new Error(`Expected a file link for ${href}`);
+
+    expect(markdownFileCopyMenuItems(meta)).toEqual([
+      ...(relative === null
+        ? []
+        : [
+            {
+              id: "copy-relative",
+              label: "Copy relative path",
+              value: relative,
+              title: "Relative path",
+            },
+          ]),
+      {
+        id: "copy-full",
+        label: "Copy full path",
+        value: full,
+        title: "Full path",
+      },
+    ]);
   });
 });

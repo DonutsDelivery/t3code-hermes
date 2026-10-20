@@ -421,24 +421,27 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
    * mode and a new one gets `newFileMode`, set before it is published, so a
    * private config never comes back readable by others.
    */
-  const writeText = (filePath: string, contents: string, newFileMode?: number) =>
-    Effect.gen(function* () {
-      const mode =
-        (yield* fs.stat(filePath).pipe(
-          Effect.map((info) => info.mode & 0o777),
-          Effect.orElseSucceed(() => undefined),
-        )) ?? newFileMode;
-      return yield* writeFileStringAtomically({
-        filePath,
-        contents,
-        ...(mode === undefined ? {} : { mode }),
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, path),
-        Effect.as(true),
-        Effect.orElseSucceed(() => false),
-      );
-    });
+  const writeText = Effect.fn("HindsightAgentMemory.writeText")(function* (
+    filePath: string,
+    contents: string,
+    newFileMode?: number,
+  ) {
+    const mode =
+      (yield* fs.stat(filePath).pipe(
+        Effect.map((info) => info.mode & 0o777),
+        Effect.orElseSucceed(() => undefined),
+      )) ?? newFileMode;
+    return yield* writeFileStringAtomically({
+      filePath,
+      contents,
+      ...(mode === undefined ? {} : { mode }),
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    );
+  });
 
   /** Whether `file` is gone afterwards; a missing file already is. */
   const removeFile = (file: string) =>
@@ -477,104 +480,99 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
    * links it from the shared home when Codex starts, unless it already holds
    * a file of its own, which then never sees the installer's hooks.
    */
-  const shadowSharesHooks = (shadowHome: string) =>
-    Effect.gen(function* () {
-      const shadowHooks = path.join(resolveHomePath(shadowHome), "hooks.json");
-      // Missing, or a link to a shared file not written yet: linked on the next start.
-      if (!(yield* fs.exists(shadowHooks).pipe(Effect.orElseSucceed(() => false)))) return true;
-      const own = yield* fs.realPath(shadowHooks).pipe(Effect.orElseSucceed(() => null));
-      const shared = yield* fs
-        .realPath(path.join(homeDir, ".codex", "hooks.json"))
-        .pipe(Effect.orElseSucceed(() => null));
-      return own !== null && own === shared;
-    });
+  const shadowSharesHooks = Effect.fn("HindsightAgentMemory.shadowSharesHooks")(function* (
+    shadowHome: string,
+  ) {
+    const shadowHooks = path.join(resolveHomePath(shadowHome), "hooks.json");
+    // Missing, or a link to a shared file not written yet: linked on the next start.
+    if (!(yield* fs.exists(shadowHooks).pipe(Effect.orElseSucceed(() => false)))) return true;
+    const own = yield* fs.realPath(shadowHooks).pipe(Effect.orElseSucceed(() => null));
+    const shared = yield* fs
+      .realPath(path.join(homeDir, ".codex", "hooks.json"))
+      .pipe(Effect.orElseSucceed(() => null));
+    return own !== null && own === shared;
+  });
 
   /** Agents with an enabled instance whose CLI is actually on this host. */
-  const presentAgents = (settings: ServerSettings) =>
-    Effect.gen(function* () {
-      const instances = Object.entries(deriveProviderInstanceConfigMap(settings));
-      const present: Array<PresentAgent> = [];
-      for (const agent of CODING_AGENTS) {
-        let found = false;
-        const customHomeInstances: Array<string> = [];
-        for (const [instanceId, instance] of instances) {
-          if (instance.driver !== agent.driver || !resolveProviderInstanceEnabled(instance))
-            continue;
-          const instanceConfig = asRecord(instance.config) ?? {};
-          const env = yield* mergeProviderInstanceEnvironment(
-            instance.environment,
-            hostEnvironment,
-          );
-          // Managed Codex runs a copy T3 Code installs itself, usually off PATH.
-          const managed = agent.target === "codex" && instanceConfig["setupMode"] === "managed";
-          const binary = nonEmptyString(instanceConfig["binaryPath"]) ?? agent.binary;
-          if (!managed && !(yield* isAvailable(binary, env))) continue;
-          found = true;
-          // The same environment the provider is launched with, so a home
-          // inherited from T3 Code's own counts too.
-          // A configured `homePath` takes `~`; an inherited variable is not
-          // shell-expanded, so its `~` stays literal, as the drivers read it.
-          const configuredHome = nonEmptyString(instanceConfig["homePath"]);
-          // Managed Codex replaces any inherited CODEX_HOME with its own layout.
-          const inheritedHome = managed ? null : nonEmptyString(env[agent.homeVariable]);
-          const effectiveHome =
-            configuredHome !== null
-              ? resolveHomePath(configuredHome)
-              : inheritedHome !== null
-                ? path.resolve(inheritedHome)
-                : null;
-          // One that is the default home is the home the installer writes.
-          const ownHome =
-            effectiveHome !== null && effectiveHome !== path.join(homeDir, agent.defaultHome)
-              ? effectiveHome
+  const presentAgents = Effect.fn("HindsightAgentMemory.presentAgents")(function* (
+    settings: ServerSettings,
+  ) {
+    const instances = Object.entries(deriveProviderInstanceConfigMap(settings));
+    const present: Array<PresentAgent> = [];
+    for (const agent of CODING_AGENTS) {
+      let found = false;
+      const customHomeInstances: Array<string> = [];
+      for (const [instanceId, instance] of instances) {
+        if (instance.driver !== agent.driver || !resolveProviderInstanceEnabled(instance)) continue;
+        const instanceConfig = asRecord(instance.config) ?? {};
+        const env = yield* mergeProviderInstanceEnvironment(instance.environment, hostEnvironment);
+        // Managed Codex runs a copy T3 Code installs itself, usually off PATH.
+        const managed = agent.target === "codex" && instanceConfig["setupMode"] === "managed";
+        const binary = nonEmptyString(instanceConfig["binaryPath"]) ?? agent.binary;
+        if (!managed && !(yield* isAvailable(binary, env))) continue;
+        found = true;
+        // The same environment the provider is launched with, so a home
+        // inherited from T3 Code's own counts too.
+        // A configured `homePath` takes `~`; an inherited variable is not
+        // shell-expanded, so its `~` stays literal, as the drivers read it.
+        const configuredHome = nonEmptyString(instanceConfig["homePath"]);
+        // Managed Codex replaces any inherited CODEX_HOME with its own layout.
+        const inheritedHome = managed ? null : nonEmptyString(env[agent.homeVariable]);
+        const effectiveHome =
+          configuredHome !== null
+            ? resolveHomePath(configuredHome)
+            : inheritedHome !== null
+              ? path.resolve(inheritedHome)
               : null;
-          // A managed instance other than the default runs from a shadow home
-          // under T3 Code's state, as `resolveManagedCodexHomeLayout` places it.
-          const shadowHome =
-            agent.target !== "codex"
-              ? null
-              : (nonEmptyString(instanceConfig["shadowHomePath"]) ??
-                (managed && instanceId !== "codex"
-                  ? path.join(config.stateDir, "providers", "codex", instanceId, "shadow")
-                  : null));
+        // One that is the default home is the home the installer writes.
+        const ownHome =
+          effectiveHome !== null && effectiveHome !== path.join(homeDir, agent.defaultHome)
+            ? effectiveHome
+            : null;
+        // A managed instance other than the default runs from a shadow home
+        // under T3 Code's state, as `resolveManagedCodexHomeLayout` places it.
+        const shadowHome =
+          agent.target !== "codex"
+            ? null
+            : (nonEmptyString(instanceConfig["shadowHomePath"]) ??
+              (managed && instanceId !== "codex"
+                ? path.join(config.stateDir, "providers", "codex", instanceId, "shadow")
+                : null));
+        if (ownHome !== null || (shadowHome !== null && !(yield* shadowSharesHooks(shadowHome)))) {
+          customHomeInstances.push(instanceId);
+        }
+      }
+      if (found) present.push({ target: agent.target, customHomeInstances, hermesHome: null });
+    }
+    // Resolved exactly as the connection resolver finds Hermes' config.
+    const hermesHomeOf = (env: NodeJS.ProcessEnv) =>
+      resolveHermesHome(env, hermesUserHome(env, homeDir));
+    // Like Memory, Skills and Tasks, this follows one Hermes instance; another
+    // enabled one with a home of its own is named, not wired.
+    const hermes = resolveEnabledHermesInstance(settings);
+    if (hermes !== null) {
+      const env = yield* mergeProviderInstanceEnvironment(hermes.environment, hostEnvironment);
+      const binary = nonEmptyString(hermes.settings.binaryPath) ?? "hermes";
+      if (yield* isAvailable(binary, env)) {
+        const hermesHome = hermesHomeOf(env);
+        const otherHomes: Array<string> = [];
+        for (const [instanceId, instance] of instances) {
           if (
-            ownHome !== null ||
-            (shadowHome !== null && !(yield* shadowSharesHooks(shadowHome)))
+            instanceId !== hermes.instanceId &&
+            instance.driver === "hermes" &&
+            resolveProviderInstanceEnabled(instance) &&
+            hermesHomeOf(
+              yield* mergeProviderInstanceEnvironment(instance.environment, hostEnvironment),
+            ) !== hermesHome
           ) {
-            customHomeInstances.push(instanceId);
+            otherHomes.push(instanceId);
           }
         }
-        if (found) present.push({ target: agent.target, customHomeInstances, hermesHome: null });
+        present.push({ target: "hermes", customHomeInstances: otherHomes, hermesHome });
       }
-      // Resolved exactly as the connection resolver finds Hermes' config.
-      const hermesHomeOf = (env: NodeJS.ProcessEnv) =>
-        resolveHermesHome(env, hermesUserHome(env, homeDir));
-      // Like Memory, Skills and Tasks, this follows one Hermes instance; another
-      // enabled one with a home of its own is named, not wired.
-      const hermes = resolveEnabledHermesInstance(settings);
-      if (hermes !== null) {
-        const env = yield* mergeProviderInstanceEnvironment(hermes.environment, hostEnvironment);
-        const binary = nonEmptyString(hermes.settings.binaryPath) ?? "hermes";
-        if (yield* isAvailable(binary, env)) {
-          const hermesHome = hermesHomeOf(env);
-          const otherHomes: Array<string> = [];
-          for (const [instanceId, instance] of instances) {
-            if (
-              instanceId !== hermes.instanceId &&
-              instance.driver === "hermes" &&
-              resolveProviderInstanceEnabled(instance) &&
-              hermesHomeOf(
-                yield* mergeProviderInstanceEnvironment(instance.environment, hostEnvironment),
-              ) !== hermesHome
-            ) {
-              otherHomes.push(instanceId);
-            }
-          }
-          present.push({ target: "hermes", customHomeInstances: otherHomes, hermesHome });
-        }
-      }
-      return present;
-    });
+    }
+    return present;
+  });
 
   const codingAgentInstalled = (target: CodingAgentTarget) =>
     target === "claudeCode"
@@ -633,8 +631,8 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
    * Puts the installer config's connection back; whether that is done. A file
    * that no longer parses is left for its owner to fix, and retried later.
    */
-  const restoreInstallerConnection = (previous: InstallerConnection) =>
-    Effect.gen(function* () {
+  const restoreInstallerConnection = Effect.fn("HindsightAgentMemory.restoreInstallerConnection")(
+    function* (previous: InstallerConnection) {
       const text = yield* readText(installerConfigPath);
       const current = text === null ? {} : asRecord(yield* readJson(installerConfigPath));
       if (current === null) return false;
@@ -642,7 +640,8 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
       return restored === null
         ? yield* removeFile(installerConfigPath)
         : yield* writeInstallerConfig(restored);
-    });
+    },
+  );
 
   const hermesConfigFile = (home: string) => path.join(home, "config.yaml");
   const hermesHindsightFile = (home: string) => path.join(home, "hindsight", "config.json");
@@ -661,21 +660,23 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
    * Sets or clears `memory.provider`. Never rewrites a `config.yaml` that does
    * not parse: a typo elsewhere in a file Hermes owns must survive this.
    */
-  const writeHermesProvider = (home: string, provider: string | null) =>
-    Effect.gen(function* () {
-      const document = parseDocument((yield* readText(hermesConfigFile(home))) ?? "");
-      if (document.errors.length > 0) return false;
-      if (provider === null) {
-        document.deleteIn(["memory", "provider"]);
-        const memory = document.getIn(["memory"]);
-        if (isMap(memory) && memory.items.length === 0) document.deleteIn(["memory"]);
-      } else {
-        document.setIn(["memory", "provider"], provider);
-      }
-      // A file left with nothing in it reads better empty than as `{}`.
-      const emptied = isMap(document.contents) && document.contents.items.length === 0;
-      return yield* writeText(hermesConfigFile(home), emptied ? "" : document.toString());
-    });
+  const writeHermesProvider = Effect.fn("HindsightAgentMemory.writeHermesProvider")(function* (
+    home: string,
+    provider: string | null,
+  ) {
+    const document = parseDocument((yield* readText(hermesConfigFile(home))) ?? "");
+    if (document.errors.length > 0) return false;
+    if (provider === null) {
+      document.deleteIn(["memory", "provider"]);
+      const memory = document.getIn(["memory"]);
+      if (isMap(memory) && memory.items.length === 0) document.deleteIn(["memory"]);
+    } else {
+      document.setIn(["memory", "provider"], provider);
+    }
+    // A file left with nothing in it reads better empty than as `{}`.
+    const emptied = isMap(document.contents) && document.contents.items.length === 0;
+    return yield* writeText(hermesConfigFile(home), emptied ? "" : document.toString());
+  });
 
   /** Owner-only from the start when new, because a Hindsight Cloud key may ride in it. */
   const writeHermesHindsightConfig = (home: string, contents: string) =>
@@ -690,85 +691,84 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
    * created, keeping anything added since; whether that is done. A file that
    * no longer parses is left for its owner, and retried later.
    */
-  const removeHermesConnection = (home: string) =>
-    Effect.gen(function* () {
+  const removeHermesConnection = Effect.fn("HindsightAgentMemory.removeHermesConnection")(
+    function* (home: string) {
       const file = hermesHindsightFile(home);
       if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => true)))) return true;
       const current = asRecord(yield* readJson(file));
       if (current === null) return false;
       const rest = withoutHermesConnection(current);
       return rest === null ? yield* removeFile(file) : yield* writeText(file, rest, 0o600);
-    });
+    },
+  );
 
   /**
    * Takes out what T3 Code put into one Hermes home. Answers with what is
    * still left to undo, or null once nothing is.
    */
-  const undoHermes = (owned: HermesLedger) =>
-    Effect.gen(function* () {
-      let changedProvider = owned.changedProvider;
-      if (changedProvider) {
-        const current = yield* readHermesProvider(owned.home);
-        if (current === "hindsight") {
-          yield* markApplying;
-          changedProvider = !(yield* writeHermesProvider(owned.home, owned.previousProvider));
-        } else {
-          // Someone has since picked another provider: theirs stays. A file
-          // that does not parse is retried rather than given up on.
-          changedProvider = current === undefined;
-        }
+  const undoHermes = Effect.fn("HindsightAgentMemory.undoHermes")(function* (owned: HermesLedger) {
+    let changedProvider = owned.changedProvider;
+    if (changedProvider) {
+      const current = yield* readHermesProvider(owned.home);
+      if (current === "hindsight") {
+        yield* markApplying;
+        changedProvider = !(yield* writeHermesProvider(owned.home, owned.previousProvider));
+      } else {
+        // Someone has since picked another provider: theirs stays. A file
+        // that does not parse is retried rather than given up on.
+        changedProvider = current === undefined;
       }
-      const wroteConfig = owned.wroteConfig && !(yield* removeHermesConnection(owned.home));
-      return changedProvider || wroteConfig ? { ...owned, changedProvider, wroteConfig } : null;
-    });
+    }
+    const wroteConfig = owned.wroteConfig && !(yield* removeHermesConnection(owned.home));
+    return changedProvider || wroteConfig ? { ...owned, changedProvider, wroteConfig } : null;
+  });
 
   /**
    * One row per present agent. `wroteHermesConfig` is null when the ledger
    * could not be read, so whose Hermes config it is stays unknown.
    */
-  const agentStatuses = (input: {
+  const agentStatuses = Effect.fn("HindsightAgentMemory.agentStatuses")(function* (input: {
     readonly agents: ReadonlyArray<PresentAgent>;
     readonly failures: ReadonlyMap<HindsightAgentTarget, string>;
     readonly hermesConfig: ResolvedHindsight["hermes"];
     readonly connection: HindsightConnection | null;
     readonly wroteHermesConfig: boolean | null;
-  }) =>
-    Effect.gen(function* () {
-      const { connection, hermesConfig } = input;
-      const statuses: Array<HindsightAgentStatus> = [];
-      for (const agent of input.agents) {
-        const failure = input.failures.get(agent.target) ?? null;
-        const installed =
-          agent.target === "hermes"
-            ? agent.hermesHome !== null &&
-              hermesConfig !== null &&
-              (yield* readHermesProvider(agent.hermesHome)) === "hindsight"
-            : yield* codingAgentInstalled(agent.target);
-        // Hermes' own Hindsight config is never rewritten, so one pointing at
-        // another server, or sending another key, is named instead of
-        // passing for wired to this connection. The key itself never shows.
-        const ownConfig =
-          agent.target === "hermes" &&
-          connection !== null &&
-          hermesConfig !== null &&
-          input.wroteHermesConfig === false;
-        const note =
-          ownConfig &&
-          canonicalHindsightUrl(hermesConfig.baseUrl) !== canonicalHindsightUrl(connection.baseUrl)
-            ? `Not covered: uses its own Hindsight server at ${hindsightServerHost(hermesConfig.baseUrl)}.`
-            : ownConfig && connection.apiKey !== null && hermesConfig.apiKey !== connection.apiKey
-              ? "Not covered: uses its own API key for this server."
-              : agent.customHomeInstances.length > 0
-                ? `Not covered: ${agent.customHomeInstances.join(", ")} (own config home).`
-                : null;
-        statuses.push({
-          target: agent.target,
-          state: failure !== null ? "failed" : installed ? "installed" : "notInstalled",
-          detail: failure ?? note,
-        });
-      }
-      return statuses;
-    });
+  }) {
+    const { connection, hermesConfig } = input;
+    const statuses: Array<HindsightAgentStatus> = [];
+    for (const agent of input.agents) {
+      const failure = input.failures.get(agent.target) ?? null;
+      const installed =
+        agent.target === "hermes"
+          ? agent.hermesHome !== null &&
+            hermesConfig !== null &&
+            (yield* readHermesProvider(agent.hermesHome)) === "hindsight"
+          : yield* codingAgentInstalled(agent.target);
+      // Hermes' own Hindsight config is never rewritten, so one pointing at
+      // another server, or sending another key, is named instead of
+      // passing for wired to this connection. The key itself never shows.
+      const ownConfig =
+        agent.target === "hermes" &&
+        connection !== null &&
+        hermesConfig !== null &&
+        input.wroteHermesConfig === false;
+      const note =
+        ownConfig &&
+        canonicalHindsightUrl(hermesConfig.baseUrl) !== canonicalHindsightUrl(connection.baseUrl)
+          ? `Not covered: uses its own Hindsight server at ${hindsightServerHost(hermesConfig.baseUrl)}.`
+          : ownConfig && connection.apiKey !== null && hermesConfig.apiKey !== connection.apiKey
+            ? "Not covered: uses its own API key for this server."
+            : agent.customHomeInstances.length > 0
+              ? `Not covered: ${agent.customHomeInstances.join(", ")} (own config home).`
+              : null;
+      statuses.push({
+        target: agent.target,
+        state: failure !== null ? "failed" : installed ? "installed" : "notInstalled",
+        detail: failure ?? note,
+      });
+    }
+    return statuses;
+  });
 
   const pass = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(Effect.orElseSucceed(() => null));
@@ -816,17 +816,16 @@ export const make = Effect.fn("HindsightAgentMemory.make")(function* (
      * find to undo; on `false` the change must not be made.
      */
     let persisted = ledger;
-    const persist = (next: AgentMemoryLedger) =>
-      Effect.gen(function* () {
-        if (next === persisted) return true;
-        if (!(yield* writeLedger(next))) {
-          detail =
-            "T3 Code could not save what it changes, so it changed nothing. The server log has the details.";
-          return false;
-        }
-        persisted = next;
-        return true;
-      });
+    const persist = Effect.fn("HindsightAgentMemory.persist")(function* (next: AgentMemoryLedger) {
+      if (next === persisted) return true;
+      if (!(yield* writeLedger(next))) {
+        detail =
+          "T3 Code could not save what it changes, so it changed nothing. The server log has the details.";
+        return false;
+      }
+      persisted = next;
+      return true;
+    });
 
     const coding = agents.flatMap((agent) =>
       agent.target === "claudeCode" || agent.target === "codex" ? [agent.target] : [],

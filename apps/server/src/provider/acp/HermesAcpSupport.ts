@@ -212,29 +212,28 @@ export function buildHermesAcpSpawnInput(
   };
 }
 
-export const makeHermesAcpRuntime = (
+export const makeHermesAcpRuntime = Effect.fn("HermesAcpSupport.makeHermesAcpRuntime")(function* (
   input: HermesAcpRuntimeInput,
-): Effect.Effect<
+): Effect.fn.Return<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
   Crypto.Crypto | Scope.Scope
-> =>
-  Effect.gen(function* () {
-    const acpContext = yield* Layer.build(
-      AcpSessionRuntime.layer({
-        ...input,
-        spawn: buildHermesAcpSpawnInput(input.hermesSettings, input.cwd, input.environment),
-        authMethodId: HERMES_AUTH_METHOD_ID,
-      }).pipe(
-        Layer.provide(
-          Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),
-        ),
+> {
+  const acpContext = yield* Layer.build(
+    AcpSessionRuntime.layer({
+      ...input,
+      spawn: buildHermesAcpSpawnInput(input.hermesSettings, input.cwd, input.environment),
+      authMethodId: HERMES_AUTH_METHOD_ID,
+    }).pipe(
+      Layer.provide(
+        Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, input.childProcessSpawner),
       ),
-    );
-    return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
-      Effect.provide(acpContext),
-    );
-  });
+    ),
+  );
+  return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(
+    Effect.provide(acpContext),
+  );
+});
 
 export function resolveHermesAcpBaseModelId(model: string | null | undefined): string {
   const trimmed = model?.trim();

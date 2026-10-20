@@ -42,24 +42,24 @@ export const makeHermesTextGeneration = Effect.fn("makeHermesTextGeneration")(fu
   const crypto = yield* Crypto.Crypto;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-  const runHermesJson = <S extends Schema.Top>({
-    operation,
-    cwd,
-    prompt,
-    outputSchemaJson,
-    modelSelection,
-  }: {
-    operation:
-      | "generateCommitMessage"
-      | "generatePrContent"
-      | "generateBranchName"
-      | "generateThreadTitle";
-    cwd: string;
-    prompt: string;
-    outputSchemaJson: S;
-    modelSelection: ModelSelection;
-  }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
-    Effect.gen(function* () {
+  const runHermesJson = Effect.fn("HermesTextGeneration.runHermesJson")(
+    function* <S extends Schema.Top>({
+      operation,
+      cwd,
+      prompt,
+      outputSchemaJson,
+      modelSelection,
+    }: {
+      operation:
+        | "generateCommitMessage"
+        | "generatePrContent"
+        | "generateBranchName"
+        | "generateThreadTitle";
+      cwd: string;
+      prompt: string;
+      outputSchemaJson: S;
+      modelSelection: ModelSelection;
+    }) {
       const resolvedModel = resolveHermesAcpBaseModelId(modelSelection.model);
       const outputRef = yield* Ref.make("");
       const runtime = yield* makeHermesAcpRuntime({
@@ -145,18 +145,21 @@ export const makeHermesTextGeneration = Effect.fn("makeHermesTextGeneration")(fu
             ),
         }),
       );
-    }).pipe(
-      Effect.mapError((cause) =>
-        isTextGenerationError(cause)
-          ? cause
-          : new TextGenerationError({
-              operation,
-              detail: "Hermes ACP text generation failed.",
-              cause,
-            }),
+    },
+    (effect, { operation }) =>
+      effect.pipe(
+        Effect.mapError((cause) =>
+          isTextGenerationError(cause)
+            ? cause
+            : new TextGenerationError({
+                operation,
+                detail: "Hermes ACP text generation failed.",
+                cause,
+              }),
+        ),
+        Effect.scoped,
       ),
-      Effect.scoped,
-    );
+  );
 
   const generateCommitMessage: TextGeneration.TextGeneration["Service"]["generateCommitMessage"] =
     Effect.fn("HermesTextGeneration.generateCommitMessage")(function* (input) {

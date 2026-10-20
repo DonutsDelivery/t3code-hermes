@@ -163,39 +163,40 @@ export function resolveHermesReasoningSelection(input: {
  * A write that failed also reports `undefined`, so nothing downstream believes
  * a level landed that did not.
  */
-export const applyHermesReasoningSelection = (input: {
+export const applyHermesReasoningSelection = Effect.fn(
+  "hermesReasoningOptions.applyHermesReasoningSelection",
+)(function* (input: {
   readonly model: string | null | undefined;
   readonly selections: ReadonlyArray<ProviderOptionSelection> | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
-}): Effect.Effect<
+}): Effect.fn.Return<
   HermesReasoningLevel | null | undefined,
   never,
   FileSystem.FileSystem | Path.Path
-> =>
-  Effect.gen(function* () {
-    const slug = input.model?.trim();
-    if (!slug || !input.selections || input.selections.length === 0) return undefined;
+> {
+  const slug = input.model?.trim();
+  if (!slug || !input.selections || input.selections.length === 0) return undefined;
 
-    const context = readHermesReasoningContext(input.environment ?? process.env);
-    const level = resolveHermesReasoningSelection({
-      slug,
-      selections: input.selections,
-      cache: context.cache,
-    });
-    if (level === undefined) return undefined;
-
-    const outcome = yield* writeHermesReasoningOverride({
-      configFile: context.configFile,
-      slug,
-      level,
-    });
-    if (outcome._tag === "parseFailed" || outcome._tag === "writeFailed") {
-      yield* Effect.logWarning("Could not record the Hermes reasoning effort.", {
-        outcome: outcome._tag,
-        detail: outcome.detail,
-        model: slug,
-      });
-      return undefined;
-    }
-    return level;
+  const context = readHermesReasoningContext(input.environment ?? process.env);
+  const level = resolveHermesReasoningSelection({
+    slug,
+    selections: input.selections,
+    cache: context.cache,
   });
+  if (level === undefined) return undefined;
+
+  const outcome = yield* writeHermesReasoningOverride({
+    configFile: context.configFile,
+    slug,
+    level,
+  });
+  if (outcome._tag === "parseFailed" || outcome._tag === "writeFailed") {
+    yield* Effect.logWarning("Could not record the Hermes reasoning effort.", {
+      outcome: outcome._tag,
+      detail: outcome.detail,
+      model: slug,
+    });
+    return undefined;
+  }
+  return level;
+});

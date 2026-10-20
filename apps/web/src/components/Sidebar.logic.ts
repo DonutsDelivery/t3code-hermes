@@ -26,7 +26,7 @@ import {
   type ThreadSortInput,
 } from "../lib/threadSort";
 import type { SidebarThreadSummary, Thread } from "../types";
-import { cn, normalizeSearchText } from "../lib/utils";
+import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
@@ -634,6 +634,7 @@ type ThreadStatusInput = Pick<
 > & {
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
+  blockedOnThreadWait?: boolean | undefined;
 };
 
 export interface ThreadJumpHintVisibilityController {
@@ -884,40 +885,6 @@ export function isContextMenuPointerDown(input: {
   return input.isMac && input.button === 0 && input.ctrlKey;
 }
 
-export function resolveThreadRowClassName(input: {
-  isActive: boolean;
-  isSelected: boolean;
-}): string {
-  const baseClassName =
-    "h-8 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-sm select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
-
-  if (input.isSelected && input.isActive) {
-    return cn(
-      baseClassName,
-      "bg-sidebar-row-active text-sidebar-foreground font-medium hover:bg-sidebar-row-active hover:text-sidebar-foreground",
-    );
-  }
-
-  if (input.isSelected) {
-    return cn(
-      baseClassName,
-      "bg-sidebar-row-selected text-sidebar-foreground hover:bg-sidebar-row-active hover:text-sidebar-foreground",
-    );
-  }
-
-  if (input.isActive) {
-    return cn(
-      baseClassName,
-      "bg-sidebar-row-active text-sidebar-foreground font-medium hover:bg-sidebar-row-active hover:text-sidebar-foreground",
-    );
-  }
-
-  return cn(
-    baseClassName,
-    "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-  );
-}
-
 export type SidebarThreadStatus =
   | "approval"
   | "input"
@@ -957,6 +924,7 @@ type SidebarThreadStatusInput = Pick<
   | "runtime"
   | "settledAt"
   | "settledOverride"
+  | "blockedOnThreadWait"
 >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
@@ -965,6 +933,9 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   }
   if (thread.hasPendingUserInput || thread.pendingSubagentRequest === "user_input") {
     return "input";
+  }
+  if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
+    return "waiting";
   }
   if (
     thread.runtime !== null &&
@@ -1235,7 +1206,10 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.runtime?.status === "running" || thread.runtime?.status === "waiting") {
+  if (
+    (thread.runtime?.status === "running" && thread.blockedOnThreadWait !== true) ||
+    thread.runtime?.status === "waiting"
+  ) {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",
@@ -1261,7 +1235,10 @@ export function resolveThreadStatusPill(input: {
     ...thread,
     pendingBackgroundTasks: thread.pendingBackgroundTasks ?? [],
   });
-  if (!monitoring && backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) {
+  if (
+    (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) ||
+    (!monitoring && backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []))
+  ) {
     return {
       label: "Waiting",
       colorClass: "text-sidebar-muted-foreground",
