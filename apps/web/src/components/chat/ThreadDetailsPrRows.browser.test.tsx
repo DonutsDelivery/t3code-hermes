@@ -245,7 +245,6 @@ it("keeps workspace controls after expanding and collapsing 70 linked pull reque
         availableEditors={[]}
         openInShortcutEnabled={false}
         showOpenInPicker
-        openInShortcutEnabled={false}
         gitCwd="/tmp/project"
         isGitRepo
         envLocked={false}
