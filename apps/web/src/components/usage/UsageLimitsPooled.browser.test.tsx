@@ -81,7 +81,7 @@ async function click(label: string) {
     (node) => node.textContent === label || node.getAttribute("aria-label")?.startsWith(label),
   );
   expect(button).toBeDefined();
-  await act(() => userEvent.click(button!));
+  await userEvent.click(button!);
 }
 
 /**
@@ -177,6 +177,23 @@ it("omits an empty reset plate but keeps countdowns and banked credits visible",
   expect(plate()?.textContent).toBe("1");
 });
 
+it("cuts the pace gap through the segment track and keeps the tick inside it", async () => {
+  setup();
+  // Five hours before the reset is the start of the window, the right-hand end of the bar.
+  await using _screen = await render(
+    <UsageLimitsPooled
+      presentations={presentations("2026-09-03T14:00:00Z", 0)}
+      now={Date.parse("2026-09-03T09:00:00Z")}
+    />,
+  );
+  const segment = page.getByRole("button", { name: /^Alpha:/ }).element();
+  const tick = segment.querySelector(':scope > span[style*="left"]')!.getBoundingClientRect();
+  const rect = segment.getBoundingClientRect();
+  expect(getComputedStyle(segment).backgroundImage).toMatch(/^linear-gradient/);
+  expect(tick.left).toBeGreaterThanOrEqual(rect.left);
+  expect(tick.right).toBeLessThanOrEqual(rect.right);
+});
+
 it("moves the one limit popover between windows on hover", async () => {
   setup();
   await using screen = await render(initial());
@@ -225,24 +242,24 @@ it("moves the one limit popover between windows on hover", async () => {
   const session = segment("Alpha: 60%");
   const weekly = segment("Alpha: 68%");
 
-  await act(() => userEvent.click(session));
+  await userEvent.click(session);
   await expect.poll(popups).toEqual([expect.stringContaining("Left60%")]);
 
-  await act(() => userEvent.hover(weekly));
+  await userEvent.hover(weekly);
   await expect.poll(popups).toEqual([expect.stringContaining("Left68%")]);
 
   // Weekly's popover now sits over the middle of the Session bar; come back in at its edge.
-  await act(() => userEvent.hover(session, { position: { x: 4, y: 4 } }));
+  await userEvent.hover(session, { position: { x: 4, y: 4 } });
   await expect.poll(popups).toEqual([expect.stringContaining("Left60%")]);
 
   await expectDismissedInPlace(() =>
     act(() => screen.rerender(<UsageLimitsPooled presentations={new Map()} now={0} />)),
   );
-  await act(() => userEvent.hover(container, { position: { x: 4, y: 4 } }));
+  await userEvent.hover(container, { position: { x: 4, y: 4 } });
 
   await act(() => screen.rerender(<UsageLimitsPooled presentations={twoWindows} now={0} />));
   await expect.poll(popups).toEqual([]);
-  await act(() => userEvent.click(segment("Alpha: 60%")));
+  await userEvent.click(segment("Alpha: 60%"));
   await expect.poll(popups).toEqual([expect.stringContaining("Left60%")]);
 });
 
