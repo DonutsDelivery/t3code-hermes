@@ -296,8 +296,9 @@ export const make = Effect.gen(function* () {
     return PubSub.publish(changes, { threadId, value });
   };
 
-  const observe: RunThroughputMeterShape["observe"] = (run, event) =>
-    Effect.gen(function* () {
+  const observe: RunThroughputMeterShape["observe"] =
+    /* Provider events include streaming deltas; avoid a span for each update. */
+    Effect.fnUntraced(function* (run, event) {
       if (
         event.type !== "output.progress" &&
         event.type !== "output.measured" &&
@@ -323,8 +324,9 @@ export const make = Effect.gen(function* () {
       yield* Effect.forkDetach(tick);
     });
 
-  const endRun: RunThroughputMeterShape["endRun"] = (run) =>
-    Effect.gen(function* () {
+  const endRun: RunThroughputMeterShape["endRun"] =
+    /* Provider events include streaming deltas; avoid a span for each update. */
+    Effect.fnUntraced(function* (run) {
       if (!endedRuns.has(run.runId)) {
         endedRuns.add(run.runId);
         if (endedRuns.size > MAX_ENDED_RUNS) {

@@ -58,30 +58,29 @@ const HERMES_RELEASE_REPOSITORY = "NousResearch/hermes-agent";
 // runner has no terminal to answer them. It runs with the instance's
 // environment so a custom `HERMES_HOME` is the one migrated.
 const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
-  resolve: (context) =>
-    Effect.gen(function* () {
-      const manual = makeManualOnlyProviderMaintenanceCapabilities({
-        provider: DRIVER_KIND,
-        packageName: null,
-        githubReleaseRepository: HERMES_RELEASE_REPOSITORY,
-      });
-      if (!context) {
-        return manual;
-      }
-      if ((yield* resolveHermesGitCheckout(context.realCommandPath)) === null) {
-        return manual;
-      }
-      return makeProviderMaintenanceCapabilities({
-        provider: DRIVER_KIND,
-        packageName: null,
-        updateExecutable: context.resolvedCommandPath,
-        updateArgs: ["update", "--yes"],
-        updateLockKey: HERMES_UPDATE_LOCK_KEY,
-        platform: context.platform,
-        env: context.env,
-        githubReleaseRepository: HERMES_RELEASE_REPOSITORY,
-      });
-    }),
+  resolve: Effect.fn("HermesDriver.resolve")(function* (context) {
+    const manual = makeManualOnlyProviderMaintenanceCapabilities({
+      provider: DRIVER_KIND,
+      packageName: null,
+      githubReleaseRepository: HERMES_RELEASE_REPOSITORY,
+    });
+    if (!context) {
+      return manual;
+    }
+    if ((yield* resolveHermesGitCheckout(context.realCommandPath)) === null) {
+      return manual;
+    }
+    return makeProviderMaintenanceCapabilities({
+      provider: DRIVER_KIND,
+      packageName: null,
+      updateExecutable: context.resolvedCommandPath,
+      updateArgs: ["update", "--yes"],
+      updateLockKey: HERMES_UPDATE_LOCK_KEY,
+      platform: context.platform,
+      env: context.env,
+      githubReleaseRepository: HERMES_RELEASE_REPOSITORY,
+    });
+  }),
 };
 
 export type HermesDriverEnv =
@@ -122,107 +121,113 @@ export const HermesDriver: ProviderDriver<HermesSettings, HermesDriverEnv, Herme
   configSchema: HermesSettings,
   defaultConfig: (): HermesSettings => decodeHermesSettings({}),
   usage: hermesUsageReader,
-  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
-    Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const httpClient = yield* HttpClient.HttpClient;
-      const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
-      const processEnv = yield* mergeProviderInstanceEnvironment(environment);
-      const continuationIdentity = defaultProviderContinuationIdentity({
-        driverKind: DRIVER_KIND,
-        instanceId,
-      });
-      const stampIdentity = withInstanceIdentity({
-        instanceId,
-        displayName,
-        accentColor,
-        continuationGroupKey: continuationIdentity.continuationKey,
-      });
-      const effectiveConfig = { ...config, enabled } satisfies HermesSettings;
-      const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
-        resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
-          binaryPath: effectiveConfig.binaryPath,
-          env: processEnv,
-        }).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-        ),
-      );
-
-      const orchestrationAdapter = yield* HermesAdapterV2Driver.create({
-        instanceId,
-        displayName,
-        accentColor,
-        environment,
-        enabled,
-        config,
+  create: Effect.fn("HermesDriver.create")(function* ({
+    instanceId,
+    displayName,
+    accentColor,
+    environment,
+    enabled,
+    config,
+  }) {
+    const crypto = yield* Crypto.Crypto;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const httpClient = yield* HttpClient.HttpClient;
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
+    const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+    const continuationIdentity = defaultProviderContinuationIdentity({
+      driverKind: DRIVER_KIND,
+      instanceId,
+    });
+    const stampIdentity = withInstanceIdentity({
+      instanceId,
+      displayName,
+      accentColor,
+      continuationGroupKey: continuationIdentity.continuationKey,
+    });
+    const effectiveConfig = { ...config, enabled } satisfies HermesSettings;
+    const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+      resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+        binaryPath: effectiveConfig.binaryPath,
+        env: processEnv,
       }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: "Failed to build Hermes orchestration adapter.",
-              cause,
-            }),
-        ),
-      );
-      const textGeneration = yield* makeHermesTextGeneration(effectiveConfig, processEnv);
-
-      const checkProvider = checkHermesProviderStatus(effectiveConfig, processEnv).pipe(
-        Effect.map(stampIdentity),
-        Effect.provideService(Crypto.Crypto, crypto),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      );
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      ),
+    );
 
-      const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<HermesSettings>>({
-        resolveMaintenance,
-        getSettings: snapshotSettings.getSettings,
-        streamSettings: snapshotSettings.streamSettings,
-        haveSettingsChanged: haveProviderSnapshotSettingsChanged,
-        initialSnapshot: (settings) =>
-          buildInitialHermesProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
-        checkProvider,
-        enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
-          resolveMaintenance().pipe(
-            Effect.flatMap((maintenanceCapabilities) =>
-              enrichHermesSnapshot({
-                snapshot: currentSnapshot,
-                maintenanceCapabilities,
-                enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-                publishSnapshot,
-                httpClient,
-                latestVersions,
-              }),
-            ),
-          ),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderDriverError({
-              driver: DRIVER_KIND,
-              instanceId,
-              detail: `Failed to build Hermes snapshot: ${cause.message ?? String(cause)}`,
-              cause,
+    const orchestrationAdapter = yield* HermesAdapterV2Driver.create({
+      instanceId,
+      displayName,
+      accentColor,
+      environment,
+      enabled,
+      config,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: "Failed to build Hermes orchestration adapter.",
+            cause,
+          }),
+      ),
+    );
+    const textGeneration = yield* makeHermesTextGeneration(effectiveConfig, processEnv);
+
+    const checkProvider = checkHermesProviderStatus(effectiveConfig, processEnv).pipe(
+      Effect.map(stampIdentity),
+      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    );
+
+    const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<HermesSettings>>({
+      resolveMaintenance,
+      getSettings: snapshotSettings.getSettings,
+      streamSettings: snapshotSettings.streamSettings,
+      haveSettingsChanged: haveProviderSnapshotSettingsChanged,
+      initialSnapshot: (settings) =>
+        buildInitialHermesProviderSnapshot(settings.provider).pipe(Effect.map(stampIdentity)),
+      checkProvider,
+      enrichSnapshot: ({ settings, snapshot: currentSnapshot, publishSnapshot }) =>
+        resolveMaintenance().pipe(
+          Effect.flatMap((maintenanceCapabilities) =>
+            enrichHermesSnapshot({
+              snapshot: currentSnapshot,
+              maintenanceCapabilities,
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+              publishSnapshot,
+              httpClient,
+              latestVersions,
             }),
+          ),
         ),
-      );
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: `Failed to build Hermes snapshot: ${cause.message ?? String(cause)}`,
+            cause,
+          }),
+      ),
+    );
 
-      return {
-        instanceId,
-        driverKind: DRIVER_KIND,
-        continuationIdentity,
-        displayName,
-        accentColor,
-        enabled,
-        snapshot,
-        orchestrationAdapter,
-        textGeneration,
-      } satisfies ProviderInstance;
-    }),
+    return {
+      instanceId,
+      driverKind: DRIVER_KIND,
+      continuationIdentity,
+      displayName,
+      accentColor,
+      enabled,
+      snapshot,
+      orchestrationAdapter,
+      textGeneration,
+    } satisfies ProviderInstance;
+  }),
 };

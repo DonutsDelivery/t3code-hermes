@@ -104,8 +104,8 @@ export function unmarkFastModeEndpoints(document: Document): number {
  * answers without credentials with `{"message":"CLI Proxy API Server"}` and
  * `X-CPA-*` headers, so no API key is ever sent.
  */
-const isCliProxyApiEndpoint = (baseUrl: string) =>
-  Effect.gen(function* () {
+const isCliProxyApiEndpoint = Effect.fn("hermesFastModeConfig.isCliProxyApiEndpoint")(
+  function* (baseUrl: string) {
     const root = new URL(baseUrl);
     root.pathname = root.pathname.replace(/\/v1\/?$/, "/");
     root.search = "";
@@ -119,45 +119,42 @@ const isCliProxyApiEndpoint = (baseUrl: string) =>
       "message" in body &&
       body.message === "CLI Proxy API Server"
     );
-  }).pipe(
-    Effect.timeout("3 seconds"),
-    Effect.orElseSucceed(() => false),
-  );
+  },
+  Effect.timeout("3 seconds"),
+  Effect.orElseSucceed(() => false),
+);
 
 /**
  * Applies `edit` to `config.yaml` and writes it back when it changed anything.
  * Never fails the caller: the patch change already happened, and a config T3
  * Code could not read or write is left exactly as it was.
  */
-const editHermesConfig = <R>(
+const editHermesConfig = Effect.fn("hermesFastModeConfig.editHermesConfig")(function* <R>(
   configFile: string,
   edit: (document: Document) => Effect.Effect<number, never, R>,
-) =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem.FileSystem;
-    const text = yield* fileSystem
-      .readFileString(configFile)
-      .pipe(Effect.orElseSucceed(() => null));
-    if (text === null) return 0;
-    const document = parseDocument(text);
-    if (document.errors.length > 0) {
-      yield* Effect.logWarning("Hermes config.yaml did not parse; fast mode was not configured.");
-      return 0;
-    }
-    const changed = yield* edit(document);
-    if (changed === 0) return 0;
-    const written = yield* writeFileStringAtomically({
-      filePath: configFile,
-      contents: document.toString(),
-    }).pipe(Effect.result);
-    if (Result.isFailure(written)) {
-      yield* Effect.logWarning("Could not write Hermes config.yaml for fast mode.", {
-        cause: written.failure._tag,
-      });
-      return 0;
-    }
-    return changed;
-  });
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const text = yield* fileSystem.readFileString(configFile).pipe(Effect.orElseSucceed(() => null));
+  if (text === null) return 0;
+  const document = parseDocument(text);
+  if (document.errors.length > 0) {
+    yield* Effect.logWarning("Hermes config.yaml did not parse; fast mode was not configured.");
+    return 0;
+  }
+  const changed = yield* edit(document);
+  if (changed === 0) return 0;
+  const written = yield* writeFileStringAtomically({
+    filePath: configFile,
+    contents: document.toString(),
+  }).pipe(Effect.result);
+  if (Result.isFailure(written)) {
+    yield* Effect.logWarning("Could not write Hermes config.yaml for fast mode.", {
+      cause: written.failure._tag,
+    });
+    return 0;
+  }
+  return changed;
+});
 
 /** Opts every CLIProxyAPI endpoint in Hermes's config into fast mode. */
 export const optInHermesFastModeEndpoints = (configFile: string) =>

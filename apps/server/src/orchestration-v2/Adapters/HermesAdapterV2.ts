@@ -181,67 +181,70 @@ export function makeHermesAcpAdapterFlavor(
      * permission policy is what enforces approvals. Fast mode is a session
      * option Hermes re-pins on every turn, so it survives the model rebuild.
      */
-    applyModelSelection: ({ runtime, startResult, modelSelection }) =>
-      Effect.gen(function* () {
-        const runtimeMode = runtimeModes.get(runtime);
-        const modeId =
-          runtimeMode === undefined
-            ? undefined
-            : resolveHermesSessionModeId({ runtimeMode, modeState: yield* runtime.getModeState });
-        if (modeId !== undefined) {
-          yield* runtime
-            .setMode(modeId)
-            .pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("Hermes session mode selection failed.", { cause, modeId }),
-              ),
-            );
-        }
-        const model = yield* reasoningConfigPermit.withPermit(
-          Effect.gen(function* () {
-            const level = yield* applyHermesReasoningSelection({
-              model: modelSelection.model,
-              selections: modelSelection.options,
-              environment: options.environment,
-            }).pipe(
-              Effect.provideService(FileSystem.FileSystem, options.fileSystem),
-              Effect.provideService(Path.Path, options.path),
-            );
-            const rebuild = level !== undefined && builtReasoningLevels.get(runtime) !== level;
-            // Hermes speaks ACP v1 (`session/set_model`); an agent on v2 takes
-            // the model as a config option instead.
-            const modelOption =
-              startResult.initializeResult.protocolVersion === 1
-                ? undefined
-                : (yield* runtime.getConfigOptions).find((option) => option.category === "model");
-            const model = yield* applyHermesAcpModelSelection({
-              runtime:
-                modelOption === undefined
-                  ? runtime
-                  : { setSessionModel: (id) => runtime.setModel(id).pipe(Effect.as({})) },
-              currentModelId:
-                typeof modelOption?.currentValue === "string"
-                  ? modelOption.currentValue
-                  : currentHermesModelIdFromSessionSetup(startResult.sessionSetupResult),
-              requestedModelId: resolveHermesAcpBaseModelId(modelSelection.model),
-              ...(rebuild ? { forceReapply: true } : {}),
-              mapError: (cause) => cause,
-            });
-            if (level !== undefined) builtReasoningLevels.set(runtime, level);
-            return model;
-          }),
-        );
-        const fastMode = resolveHermesFastModeSelection(modelSelection);
-        if (fastMode !== undefined && sentFastModes.get(runtime) !== fastMode) {
-          yield* runtime.setConfigOption(HERMES_FAST_MODE_CONFIG_ID, fastMode ? "on" : "off").pipe(
-            Effect.andThen(Effect.sync(() => sentFastModes.set(runtime, fastMode))),
+    applyModelSelection: Effect.fn("HermesAdapterV2.applyModelSelection")(function* ({
+      runtime,
+      startResult,
+      modelSelection,
+    }) {
+      const runtimeMode = runtimeModes.get(runtime);
+      const modeId =
+        runtimeMode === undefined
+          ? undefined
+          : resolveHermesSessionModeId({ runtimeMode, modeState: yield* runtime.getModeState });
+      if (modeId !== undefined) {
+        yield* runtime
+          .setMode(modeId)
+          .pipe(
             Effect.catchCause((cause) =>
-              Effect.logWarning("Hermes fast mode selection failed.", { cause, fastMode }),
+              Effect.logWarning("Hermes session mode selection failed.", { cause, modeId }),
             ),
           );
-        }
-        return model;
-      }),
+      }
+      const model = yield* reasoningConfigPermit.withPermit(
+        Effect.gen(function* () {
+          const level = yield* applyHermesReasoningSelection({
+            model: modelSelection.model,
+            selections: modelSelection.options,
+            environment: options.environment,
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, options.fileSystem),
+            Effect.provideService(Path.Path, options.path),
+          );
+          const rebuild = level !== undefined && builtReasoningLevels.get(runtime) !== level;
+          // Hermes speaks ACP v1 (`session/set_model`); an agent on v2 takes
+          // the model as a config option instead.
+          const modelOption =
+            startResult.initializeResult.protocolVersion === 1
+              ? undefined
+              : (yield* runtime.getConfigOptions).find((option) => option.category === "model");
+          const model = yield* applyHermesAcpModelSelection({
+            runtime:
+              modelOption === undefined
+                ? runtime
+                : { setSessionModel: (id) => runtime.setModel(id).pipe(Effect.as({})) },
+            currentModelId:
+              typeof modelOption?.currentValue === "string"
+                ? modelOption.currentValue
+                : currentHermesModelIdFromSessionSetup(startResult.sessionSetupResult),
+            requestedModelId: resolveHermesAcpBaseModelId(modelSelection.model),
+            ...(rebuild ? { forceReapply: true } : {}),
+            mapError: (cause) => cause,
+          });
+          if (level !== undefined) builtReasoningLevels.set(runtime, level);
+          return model;
+        }),
+      );
+      const fastMode = resolveHermesFastModeSelection(modelSelection);
+      if (fastMode !== undefined && sentFastModes.get(runtime) !== fastMode) {
+        yield* runtime.setConfigOption(HERMES_FAST_MODE_CONFIG_ID, fastMode ? "on" : "off").pipe(
+          Effect.andThen(Effect.sync(() => sentFastModes.set(runtime, fastMode))),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Hermes fast mode selection failed.", { cause, fastMode }),
+          ),
+        );
+      }
+      return model;
+    }),
     normalizeToolCall: (toolCall) =>
       preserveHermesAgentActivityTitle(normalizeHermesTerminalResult(toolCall)),
     extractSubagentUpdates: makeHermesSubagentExtractor(),

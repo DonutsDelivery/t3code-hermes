@@ -4,9 +4,9 @@ import {
   type HermesCronJob,
   type HermesCronRun,
 } from "@t3tools/contracts";
-import { act, type ReactElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+
+import { act, render, type Screen } from "../../../test/render";
 
 const state = vi.hoisted(() => ({ getOutput: vi.fn(), jobs: [] as HermesCronJob[] }));
 vi.mock("../../state/server", () => ({ serverEnvironment: { hermesCronGetRunOutput: {} } }));
@@ -49,24 +49,8 @@ const run: HermesCronRun = {
     error: null,
   },
 };
-let root: Root;
-let container: HTMLDivElement;
-
-function render(element: ReactElement) {
-  return act(async () => root.render(element));
-}
-
-function click(label: string) {
-  const element = container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
-  expect(element).not.toBeNull();
-  return act(async () => element!.click());
-}
-
-beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
+// The mocked modules read `state`, so every test resets it before rendering.
+function setup() {
   state.getOutput.mockReset().mockResolvedValue({
     _tag: "Success",
     value: { content: "Full report", truncated: false, source: "session" },
@@ -87,34 +71,36 @@ beforeEach(() => {
       runs: [run],
     },
   ];
-});
+}
 
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.unstubAllGlobals();
-});
+function click(screen: Screen, label: string) {
+  const element = screen.container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+  expect(element).not.toBeNull();
+  return act(() => element!.click());
+}
 
 it("fetches full output only when a run is expanded, not when task history opens", async () => {
-  await render(
+  setup();
+  await using screen = await render(
     <HermesTasksTab environmentId={environmentId} onNewTask={vi.fn()} target={{ environmentId }} />,
   );
   expect(state.getOutput).not.toHaveBeenCalled();
-  await click("Expand task Report");
+  await click(screen, "Expand task Report");
   expect(state.getOutput).not.toHaveBeenCalled();
-  await click("Run run: completed");
+  await click(screen, "Run run: completed");
   expect(state.getOutput).toHaveBeenCalledExactlyOnceWith({
     environmentId,
     input: { jobId: run.jobId, runId: "run" },
   });
-  expect(container.textContent).toContain("Full report");
-  await click("Run run: completed");
-  expect(container.textContent).not.toContain("Full report");
+  expect(screen.container.textContent).toContain("Full report");
+  await click(screen, "Run run: completed");
+  expect(screen.container.textContent).not.toContain("Full report");
   expect(state.getOutput).toHaveBeenCalledTimes(1);
 });
 
 it("opens the targeted task and run immediately on its owning environment", async () => {
-  await render(
+  setup();
+  await using screen = await render(
     <HermesTasksTab
       environmentId={environmentId}
       onNewTask={vi.fn()}
@@ -125,30 +111,36 @@ it("opens the targeted task and run immediately on its owning environment", asyn
     environmentId,
     input: { jobId: run.jobId, runId: "run" },
   });
-  expect(container.textContent).toContain("Full report");
+  expect(screen.container.textContent).toContain("Full report");
 });
 
 it("does not fetch unavailable output or claim unrecorded session output was delivered", async () => {
   const unavailable = { ...run, delivery: { ...run.delivery!, contentAvailable: false } };
-  await render(<HermesRunRow run={unavailable} environmentId={environmentId} targeted />);
+  setup();
+  await using screen = await render(
+    <HermesRunRow run={unavailable} environmentId={environmentId} targeted />,
+  );
   expect(state.getOutput).not.toHaveBeenCalled();
-  expect(container.textContent).toContain("No recorded output is available");
-  expect(container.textContent).toContain("not recorded");
+  expect(screen.container.textContent).toContain("No recorded output is available");
+  expect(screen.container.textContent).toContain("not recorded");
 });
 
 it("offers retry after a failed request and reports truncated full output", async () => {
+  setup();
   state.getOutput.mockResolvedValueOnce({ _tag: "Failure" }).mockResolvedValueOnce({
     _tag: "Success",
     value: { content: "Partial report", truncated: true, source: "delivery" },
   });
-  await render(<HermesRunRow run={run} environmentId={environmentId} targeted />);
-  expect(container.textContent).toContain("Could not load");
-  const retry = Array.from(container.querySelectorAll("button")).find(
+  await using screen = await render(
+    <HermesRunRow run={run} environmentId={environmentId} targeted />,
+  );
+  expect(screen.container.textContent).toContain("Could not load");
+  const retry = Array.from(screen.container.querySelectorAll("button")).find(
     (button) => button.textContent === "Retry",
   );
   expect(retry).toBeDefined();
-  await act(async () => retry!.click());
+  await act(() => retry!.click());
   expect(state.getOutput).toHaveBeenCalledTimes(2);
-  expect(container.textContent).toContain("Partial report");
-  expect(container.textContent).toContain("Output truncated to the display limit.");
+  expect(screen.container.textContent).toContain("Partial report");
+  expect(screen.container.textContent).toContain("Output truncated to the display limit.");
 });

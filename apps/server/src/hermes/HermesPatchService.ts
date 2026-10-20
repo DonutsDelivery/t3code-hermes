@@ -230,29 +230,30 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
       Effect.orElseSucceed(() => null),
     );
 
-  const readGatewayStatus = (checkout: Checkout) =>
-    Effect.gen(function* () {
-      const restart = yield* Ref.get(restartRef);
-      const gateway = yield* readGateway(checkout.hermesHome);
-      // A failure describes the gateway it left behind. Once another one
-      // answers, say one started by hand, the failure is history.
-      const failure =
-        restart.failure !== null && restart.failure.gatewayPid === (gateway?.pid ?? null)
-          ? restart.failure.detail
-          : null;
-      if (restart.running) {
-        return { status: { state: "restarting", canRestart: true } as const, failure: null };
-      }
-      if (gateway === null) return { status: null, failure };
-      const changedAtMs = yield* Effect.promise(() =>
-        latestModifiedMs(checkout.checkoutRoot, patchedSourceFiles),
-      ).pipe(Effect.orElseSucceed(() => null));
-      const status: HermesGatewayStatus = {
-        state: changedAtMs !== null && changedAtMs > gateway.startedAtMs ? "outdated" : "upToDate",
-        canRestart: isRestartable(gateway),
-      };
-      return { status, failure };
-    });
+  const readGatewayStatus = Effect.fn("HermesPatchService.readGatewayStatus")(function* (
+    checkout: Checkout,
+  ) {
+    const restart = yield* Ref.get(restartRef);
+    const gateway = yield* readGateway(checkout.hermesHome);
+    // A failure describes the gateway it left behind. Once another one
+    // answers, say one started by hand, the failure is history.
+    const failure =
+      restart.failure !== null && restart.failure.gatewayPid === (gateway?.pid ?? null)
+        ? restart.failure.detail
+        : null;
+    if (restart.running) {
+      return { status: { state: "restarting", canRestart: true } as const, failure: null };
+    }
+    if (gateway === null) return { status: null, failure };
+    const changedAtMs = yield* Effect.promise(() =>
+      latestModifiedMs(checkout.checkoutRoot, patchedSourceFiles),
+    ).pipe(Effect.orElseSucceed(() => null));
+    const status: HermesGatewayStatus = {
+      state: changedAtMs !== null && changedAtMs > gateway.startedAtMs ? "outdated" : "upToDate",
+      canRestart: isRestartable(gateway),
+    };
+    return { status, failure };
+  });
 
   const readSnapshot = (checkout: Checkout) =>
     provide(
@@ -289,72 +290,74 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
     return yield* readSnapshot(checkout);
   });
 
-  const change = (input: HermesPatchChangeInput, direction: "forward" | "reverse") =>
-    Effect.gen(function* () {
-      const patch = shippedPatches.find((candidate) => candidate.id === input.patchId);
-      if (patch === undefined) {
-        return yield* new HermesPatchError({
-          reason: "unknownPatch",
-          detail: "This environment does not ship that patch.",
-        });
-      }
-      const checkout = yield* locateCheckout;
-      if (checkout.availability !== "ready") {
-        return yield* new HermesPatchError({
-          reason: "unavailable",
-          detail: "There is no Hermes git checkout to patch.",
-        });
-      }
-      const before = yield* readSnapshot(checkout);
-      const expected = direction === "forward" ? "notApplied" : "applied";
-      if (before.patches.find((candidate) => candidate.id === patch.id)?.state !== expected) {
-        return yield* new HermesPatchError({
-          reason: "wrongState",
-          detail:
-            direction === "forward"
-              ? "The patch does not apply to this Hermes checkout as it is now."
-              : "The patch is not applied to this Hermes checkout.",
-        });
-      }
-      const result = yield* provide(
-        changeHermesPatch(checkout.checkoutRoot, patch, direction, shippedPatches),
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new HermesPatchError({
-              reason: "commandFailed",
-              detail: "Could not run git in the Hermes checkout.",
-              cause,
-            }),
-        ),
-      );
-      if (!result.ok) {
-        yield* Effect.logWarning("git refused a Hermes patch change").pipe(
-          Effect.annotateLogs({ patchId: patch.id, direction }),
-        );
-        return yield* new HermesPatchError({
-          reason: "commandFailed",
-          detail:
-            direction === "forward"
-              ? "git refused to apply the patch. The checkout was left unchanged."
-              : "git refused to remove the patch. The checkout was left unchanged.",
-        });
-      }
-      if (patch.id === HERMES_FAST_MODE_PATCH_ID) {
-        const configFile = path.join(checkout.hermesHome, "config.yaml");
-        yield* (
+  const change = Effect.fn("HermesPatchService.change")(function* (
+    input: HermesPatchChangeInput,
+    direction: "forward" | "reverse",
+  ) {
+    const patch = shippedPatches.find((candidate) => candidate.id === input.patchId);
+    if (patch === undefined) {
+      return yield* new HermesPatchError({
+        reason: "unknownPatch",
+        detail: "This environment does not ship that patch.",
+      });
+    }
+    const checkout = yield* locateCheckout;
+    if (checkout.availability !== "ready") {
+      return yield* new HermesPatchError({
+        reason: "unavailable",
+        detail: "There is no Hermes git checkout to patch.",
+      });
+    }
+    const before = yield* readSnapshot(checkout);
+    const expected = direction === "forward" ? "notApplied" : "applied";
+    if (before.patches.find((candidate) => candidate.id === patch.id)?.state !== expected) {
+      return yield* new HermesPatchError({
+        reason: "wrongState",
+        detail:
           direction === "forward"
-            ? optInHermesFastModeEndpoints(configFile)
-            : optOutHermesFastModeEndpoints(configFile)
-        ).pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-          Effect.provideService(HttpClient.HttpClient, httpClient),
-        );
-      }
-      yield* PubSub.publish(changesPubSub, undefined);
-      return yield* readSnapshot(checkout);
-    }).pipe(changeLock.withPermits(1));
+            ? "The patch does not apply to this Hermes checkout as it is now."
+            : "The patch is not applied to this Hermes checkout.",
+      });
+    }
+    const result = yield* provide(
+      changeHermesPatch(checkout.checkoutRoot, patch, direction, shippedPatches),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new HermesPatchError({
+            reason: "commandFailed",
+            detail: "Could not run git in the Hermes checkout.",
+            cause,
+          }),
+      ),
+    );
+    if (!result.ok) {
+      yield* Effect.logWarning("git refused a Hermes patch change").pipe(
+        Effect.annotateLogs({ patchId: patch.id, direction }),
+      );
+      return yield* new HermesPatchError({
+        reason: "commandFailed",
+        detail:
+          direction === "forward"
+            ? "git refused to apply the patch. The checkout was left unchanged."
+            : "git refused to remove the patch. The checkout was left unchanged.",
+      });
+    }
+    if (patch.id === HERMES_FAST_MODE_PATCH_ID) {
+      const configFile = path.join(checkout.hermesHome, "config.yaml");
+      yield* (
+        direction === "forward"
+          ? optInHermesFastModeEndpoints(configFile)
+          : optOutHermesFastModeEndpoints(configFile)
+      ).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(HttpClient.HttpClient, httpClient),
+      );
+    }
+    yield* PubSub.publish(changesPubSub, undefined);
+    return yield* readSnapshot(checkout);
+  }, changeLock.withPermits(1));
 
   const gitFailed = (detail: string) => (cause: unknown) =>
     new HermesPatchError({ reason: "commandFailed", detail, cause });
@@ -363,59 +366,60 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
    * Puts each patch back with whichever version fits the checkout now, and
    * sorts the ones that would not go back by why.
    */
-  const reapply = (checkout: Checkout, patches: ReadonlyArray<HermesPatchDefinition>) =>
-    Effect.gen(function* () {
-      const { checkoutRoot } = checkout;
-      const reapplied: HermesPatchId[] = [];
-      const failed: HermesPatchId[] = [];
-      for (const patch of patches) {
-        const result = yield* provide(
-          changeHermesPatch(checkoutRoot, patch, "forward", shippedPatches),
-        ).pipe(Effect.orElseSucceed(() => ({ ok: false }) as const));
-        (result.ok ? reapplied : failed).push(patch.id);
-      }
-      const snapshot = yield* readSnapshot(checkout);
-      const reasonOf = (id: HermesPatchId) =>
-        snapshot.patches.find((candidate) => candidate.id === id)?.reason;
-      return {
-        snapshot,
-        reapplied,
-        awaitingPatchUpdate: failed.filter((id) => reasonOf(id) === "awaitingPatchUpdate"),
-        notReapplied: failed.filter((id) => reasonOf(id) !== "awaitingPatchUpdate"),
-      };
-    });
+  const reapply = Effect.fn("HermesPatchService.reapply")(function* (
+    checkout: Checkout,
+    patches: ReadonlyArray<HermesPatchDefinition>,
+  ) {
+    const { checkoutRoot } = checkout;
+    const reapplied: HermesPatchId[] = [];
+    const failed: HermesPatchId[] = [];
+    for (const patch of patches) {
+      const result = yield* provide(
+        changeHermesPatch(checkoutRoot, patch, "forward", shippedPatches),
+      ).pipe(Effect.orElseSucceed(() => ({ ok: false }) as const));
+      (result.ok ? reapplied : failed).push(patch.id);
+    }
+    const snapshot = yield* readSnapshot(checkout);
+    const reasonOf = (id: HermesPatchId) =>
+      snapshot.patches.find((candidate) => candidate.id === id)?.reason;
+    return {
+      snapshot,
+      reapplied,
+      awaitingPatchUpdate: failed.filter((id) => reasonOf(id) === "awaitingPatchUpdate"),
+      notReapplied: failed.filter((id) => reasonOf(id) !== "awaitingPatchUpdate"),
+    };
+  });
 
   /**
    * Runs Hermes in its checkout. Output is capped while it streams: a full
    * dependency install logs a lot, and only its end is ever shown.
    */
-  const runHermes = (
+  const runHermes = Effect.fn("HermesPatchService.runHermes")(function* (
     checkout: {
       readonly checkoutRoot: string;
       readonly commandPath: string;
       readonly env: NodeJS.ProcessEnv;
     },
     args: ReadonlyArray<string>,
-  ) =>
-    Effect.gen(function* () {
-      const spawn = yield* resolveSpawnCommand(checkout.commandPath, args, { env: checkout.env });
-      const child = yield* spawner.spawn(
-        ChildProcess.make(spawn.command, spawn.args, {
-          cwd: checkout.checkoutRoot,
-          env: checkout.env,
-          shell: spawn.shell,
-        }),
-      );
-      const [stdout, stderr, code] = yield* Effect.all(
-        [
-          collectTailText(child.stdout, HERMES_OUTPUT_MAX_BYTES),
-          collectTailText(child.stderr, HERMES_OUTPUT_MAX_BYTES),
-          child.exitCode.pipe(Effect.map(Number)),
-        ],
-        { concurrency: "unbounded" },
-      );
-      return { stdout, stderr, code };
-    }).pipe(Effect.scoped);
+  ) {
+    const spawn = yield* resolveSpawnCommand(checkout.commandPath, args, { env: checkout.env });
+    const child = yield* spawner.spawn(
+      ChildProcess.make(spawn.command, spawn.args, {
+        cwd: checkout.checkoutRoot,
+        env: checkout.env,
+        shell: spawn.shell,
+      }),
+    );
+    const [stdout, stderr, code] = yield* Effect.all(
+      [
+        collectTailText(child.stdout, HERMES_OUTPUT_MAX_BYTES),
+        collectTailText(child.stderr, HERMES_OUTPUT_MAX_BYTES),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+    return { stdout, stderr, code };
+  }, Effect.scoped);
 
   /**
    * Runs `hermes update` without prompts or stash restore. The gateway restart
@@ -429,12 +433,12 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
    * nothing to restore anyway, since the tree is clean by then; without
    * `--no-gateway-restart` the gateway restarts once before the patches return.
    */
-  const runHermesUpdate = (checkout: {
-    readonly checkoutRoot: string;
-    readonly commandPath: string;
-    readonly env: NodeJS.ProcessEnv;
-  }) =>
-    Effect.gen(function* () {
+  const runHermesUpdate = Effect.fn("HermesPatchService.runHermesUpdate")(
+    function* (checkout: {
+      readonly checkoutRoot: string;
+      readonly commandPath: string;
+      readonly env: NodeJS.ProcessEnv;
+    }) {
       // Bounded with the update itself: by now the patches are off, so a
       // stalled probe must not leave the checkout unpatched indefinitely.
       const help = yield* runHermes(checkout, ["update", "--help"]).pipe(
@@ -452,18 +456,18 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
       ];
       const result = yield* runHermes(checkout, args);
       return { ok: result.code === 0, output: `${result.stdout}${result.stderr}` };
-    }).pipe(
-      Effect.timeoutOption(updateTimeout),
-      Effect.map((result) =>
-        Option.getOrElse(result, () => ({
-          ok: false,
-          output: "hermes update did not finish in time and was stopped.",
-        })),
-      ),
-      Effect.catch((cause) =>
-        Effect.succeed({ ok: false, output: `Could not run hermes update: ${String(cause)}` }),
-      ),
-    );
+    },
+    Effect.timeoutOption(updateTimeout),
+    Effect.map((result) =>
+      Option.getOrElse(result, () => ({
+        ok: false,
+        output: "hermes update did not finish in time and was stopped.",
+      })),
+    ),
+    Effect.catch((cause) =>
+      Effect.succeed({ ok: false, output: `Could not run hermes update: ${String(cause)}` }),
+    ),
+  );
 
   const updateHermes = Effect.gen(function* () {
     const checkout = yield* locateCheckout;
@@ -562,16 +566,18 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
   }).pipe(changeLock.withPermits(1));
 
   /** The gateway answering once one other than `previousPid` does, or the last read. */
-  const awaitReplacement = (hermesHome: string, previousPid: number) =>
-    Effect.gen(function* () {
-      let gateway = yield* readGateway(hermesHome);
-      for (let attempt = 1; attempt < REPLACEMENT_ATTEMPTS; attempt++) {
-        if (gateway !== null && gateway.pid !== previousPid) break;
-        yield* Effect.sleep(REPLACEMENT_RETRY_DELAY);
-        gateway = yield* readGateway(hermesHome);
-      }
-      return gateway;
-    });
+  const awaitReplacement = Effect.fn("HermesPatchService.awaitReplacement")(function* (
+    hermesHome: string,
+    previousPid: number,
+  ) {
+    let gateway = yield* readGateway(hermesHome);
+    for (let attempt = 1; attempt < REPLACEMENT_ATTEMPTS; attempt++) {
+      if (gateway !== null && gateway.pid !== previousPid) break;
+      yield* Effect.sleep(REPLACEMENT_RETRY_DELAY);
+      gateway = yield* readGateway(hermesHome);
+    }
+    return gateway;
+  });
 
   /**
    * Runs `hermes gateway restart` with the instance's environment, so its
@@ -580,8 +586,8 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
    * the gateway. Success means a different gateway answers afterwards; the
    * CLI exits 0 on some paths that leave the old one running.
    */
-  const runRestart = (checkout: Checkout, previousPid: number) =>
-    Effect.gen(function* () {
+  const runRestart = Effect.fn("HermesPatchService.runRestart")(
+    function* (checkout: Checkout, previousPid: number) {
       const args = ["gateway", "restart"];
       const spawnCommand = yield* resolveSpawnCommand(checkout.binary, args, { env: checkout.env });
       const result = yield* spawnAndCollect(
@@ -615,17 +621,20 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
             : "The gateway is still the one from before. Check hermes gateway status on the host.",
         gatewayPid,
       };
-    }).pipe(
-      Effect.catchCause(() =>
-        Effect.succeed({
-          detail: "Could not run hermes gateway restart.",
-          gatewayPid: previousPid,
-        }),
+    },
+    (effect, _checkout, previousPid) =>
+      effect.pipe(
+        Effect.catchCause(() =>
+          Effect.succeed({
+            detail: "Could not run hermes gateway restart.",
+            gatewayPid: previousPid,
+          }),
+        ),
+        Effect.flatMap((failure) =>
+          Ref.update(restartRef, (current) => ({ ...current, running: false, failure })),
+        ),
       ),
-      Effect.flatMap((failure) =>
-        Ref.update(restartRef, (current) => ({ ...current, running: false, failure })),
-      ),
-    );
+  );
 
   const restartGateway = Effect.gen(function* () {
     const checkout = yield* locateCheckout;

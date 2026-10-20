@@ -260,20 +260,22 @@ const make = Effect.gen(function* () {
     return { instanceId: instance.instanceId, profiles };
   });
 
-  const readHintFile = (home: string, scriptPath: string | null) =>
-    Effect.gen(function* () {
-      if (scriptPath === null) return "";
-      const candidates = path.isAbsolute(scriptPath)
-        ? [scriptPath]
-        : [path.join(home, "scripts", scriptPath), path.join(home, scriptPath)];
-      for (const candidate of candidates) {
-        const info = yield* fs.stat(candidate).pipe(Effect.option);
-        if (Option.isNone(info) || Number(info.value.size) > MAX_HINT_FILE_BYTES) continue;
-        const contents = yield* readText(candidate);
-        if (contents !== null) return contents;
-      }
-      return "";
-    });
+  const readHintFile = Effect.fn("HermesRunService.readHintFile")(function* (
+    home: string,
+    scriptPath: string | null,
+  ) {
+    if (scriptPath === null) return "";
+    const candidates = path.isAbsolute(scriptPath)
+      ? [scriptPath]
+      : [path.join(home, "scripts", scriptPath), path.join(home, scriptPath)];
+    for (const candidate of candidates) {
+      const info = yield* fs.stat(candidate).pipe(Effect.option);
+      if (Option.isNone(info) || Number(info.value.size) > MAX_HINT_FILE_BYTES) continue;
+      const contents = yield* readText(candidate);
+      if (contents !== null) return contents;
+    }
+    return "";
+  });
 
   const listSources: HermesRunService["Service"]["listSources"] = Effect.gen(function* () {
     const context = yield* hermesContext;
@@ -365,79 +367,80 @@ const make = Effect.gen(function* () {
     return { hermesEnabled: true, sources };
   });
 
-  const setSource: HermesRunService["Service"]["setSource"] = (input) =>
-    Effect.gen(function* () {
-      // Saving a choice Hermes cannot act on would switch it on silently later.
-      if ((yield* hermesContext) === null) {
+  const setSource: HermesRunService["Service"]["setSource"] = Effect.fn(
+    "HermesRunService.setSource",
+  )(function* (input) {
+    // Saving a choice Hermes cannot act on would switch it on silently later.
+    if ((yield* hermesContext) === null) {
+      return yield* new HermesRunError({
+        reason: "providerDisabled",
+        detail: "Hermes is not enabled in this environment.",
+      });
+    }
+    // Switching off always works; switching on needs a source Hermes has.
+    if (input.projectId !== null) {
+      const listed = yield* listSources;
+      const known = listed.sources.some(
+        (source) => source.profile === input.profile && source.sourceKey === input.sourceKey,
+      );
+      if (!known) {
         return yield* new HermesRunError({
-          reason: "providerDisabled",
-          detail: "Hermes is not enabled in this environment.",
+          reason: "unknownSource",
+          detail: "Hermes has no such route or scheduled job.",
         });
       }
-      // Switching off always works; switching on needs a source Hermes has.
-      if (input.projectId !== null) {
-        const listed = yield* listSources;
-        const known = listed.sources.some(
-          (source) => source.profile === input.profile && source.sourceKey === input.sourceKey,
+    }
+    if (input.projectId !== null) {
+      const project = yield* projectService
+        .getShell(input.projectId)
+        .pipe(Effect.orElseSucceed(() => Option.none()));
+      if (Option.isNone(project)) {
+        return yield* new HermesRunError({
+          reason: "unknownProject",
+          detail: "That project no longer exists in this environment.",
+        });
+      }
+    }
+    yield* stateMutex.withPermits(1)(
+      Effect.gen(function* () {
+        const current = yield* Ref.get(enabledRef);
+        const id = sourceId(input.profile, input.sourceKey);
+        const previous = current.find((entry) => sourceId(entry.profile, entry.sourceKey) === id);
+        const rest = current.filter((entry) => sourceId(entry.profile, entry.sourceKey) !== id);
+        const next =
+          input.projectId === null
+            ? rest
+            : [
+                ...rest,
+                {
+                  profile: input.profile,
+                  sourceKey: input.sourceKey,
+                  projectId: input.projectId,
+                  // Moving a source to another project keeps its history window.
+                  enabledAt: previous?.enabledAt ?? DateTime.formatIso(yield* DateTime.now),
+                },
+              ];
+        yield* encodePersistedState({ version: 1, sources: next }).pipe(
+          Effect.flatMap((contents) =>
+            writeFileStringAtomically({ filePath: statePath, contents: `${contents}\n` }),
+          ),
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError(
+            (cause) =>
+              new HermesRunError({
+                reason: "writeFailed",
+                detail: "Could not save which Hermes sources produce threads.",
+                cause,
+              }),
+          ),
         );
-        if (!known) {
-          return yield* new HermesRunError({
-            reason: "unknownSource",
-            detail: "Hermes has no such route or scheduled job.",
-          });
-        }
-      }
-      if (input.projectId !== null) {
-        const project = yield* projectService
-          .getShell(input.projectId)
-          .pipe(Effect.orElseSucceed(() => Option.none()));
-        if (Option.isNone(project)) {
-          return yield* new HermesRunError({
-            reason: "unknownProject",
-            detail: "That project no longer exists in this environment.",
-          });
-        }
-      }
-      yield* stateMutex.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(enabledRef);
-          const id = sourceId(input.profile, input.sourceKey);
-          const previous = current.find((entry) => sourceId(entry.profile, entry.sourceKey) === id);
-          const rest = current.filter((entry) => sourceId(entry.profile, entry.sourceKey) !== id);
-          const next =
-            input.projectId === null
-              ? rest
-              : [
-                  ...rest,
-                  {
-                    profile: input.profile,
-                    sourceKey: input.sourceKey,
-                    projectId: input.projectId,
-                    // Moving a source to another project keeps its history window.
-                    enabledAt: previous?.enabledAt ?? DateTime.formatIso(yield* DateTime.now),
-                  },
-                ];
-          yield* encodePersistedState({ version: 1, sources: next }).pipe(
-            Effect.flatMap((contents) =>
-              writeFileStringAtomically({ filePath: statePath, contents: `${contents}\n` }),
-            ),
-            Effect.provideService(FileSystem.FileSystem, fs),
-            Effect.provideService(Path.Path, path),
-            Effect.mapError(
-              (cause) =>
-                new HermesRunError({
-                  reason: "writeFailed",
-                  detail: "Could not save which Hermes sources produce threads.",
-                  cause,
-                }),
-            ),
-          );
-          yield* Ref.set(enabledRef, next);
-        }),
-      );
-      yield* Queue.offer(wake, undefined);
-      return yield* listSources;
-    });
+        yield* Ref.set(enabledRef, next);
+      }),
+    );
+    yield* Queue.offer(wake, undefined);
+    return yield* listSources;
+  });
 
   // ── Watcher ────────────────────────────────────────────────────────────
 
@@ -470,86 +473,87 @@ const make = Effect.gen(function* () {
    * ids derive from the item and its status, and an item is only skipped once
    * the thread holds it, so a failed write is retried next pass as it was.
    */
-  const writeEntries = (run: TrackedRun, entries: ReadonlyArray<HermesRunEntry>) =>
-    Effect.gen(function* () {
-      if (run.written === null) {
-        const records = yield* projections.getThreadRecords(run.ids.threadId, ["turnItems"], {
-          turnItemRunIds: [null],
-        });
-        run.written = new Map(records.turnItems.map((item) => [item.id, item.status]));
-      }
-      const written = run.written;
-      const fresh = entries.filter(({ item }) => {
-        const previous = written.get(item.id);
-        return previous === undefined || (previous === "running" && item.status !== "running");
+  const writeEntries = Effect.fn("HermesRunService.writeEntries")(function* (
+    run: TrackedRun,
+    entries: ReadonlyArray<HermesRunEntry>,
+  ) {
+    if (run.written === null) {
+      const records = yield* projections.getThreadRecords(run.ids.threadId, ["turnItems"], {
+        turnItemRunIds: [null],
       });
-      for (let index = 0; index < fresh.length; index += WRITE_BATCH_SIZE) {
-        const batch = fresh.slice(index, index + WRITE_BATCH_SIZE);
-        const events: OrchestrationV2DomainEvent[] = [];
-        for (const entry of batch) {
-          const item = yield* positions.normalize(entry.item);
-          if (entry.message !== undefined) {
-            events.push({
-              id: EventId.make(`${entry.message.id}:message`),
-              type: "message.updated",
-              threadId: run.ids.threadId,
-              occurredAt: entry.message.updatedAt,
-              payload: entry.message,
-            });
-          }
+      run.written = new Map(records.turnItems.map((item) => [item.id, item.status]));
+    }
+    const written = run.written;
+    const fresh = entries.filter(({ item }) => {
+      const previous = written.get(item.id);
+      return previous === undefined || (previous === "running" && item.status !== "running");
+    });
+    for (let index = 0; index < fresh.length; index += WRITE_BATCH_SIZE) {
+      const batch = fresh.slice(index, index + WRITE_BATCH_SIZE);
+      const events: OrchestrationV2DomainEvent[] = [];
+      for (const entry of batch) {
+        const item = yield* positions.normalize(entry.item);
+        if (entry.message !== undefined) {
           events.push({
-            id: EventId.make(`${item.id}:${item.status}`),
-            type: "turn-item.updated",
+            id: EventId.make(`${entry.message.id}:message`),
+            type: "message.updated",
             threadId: run.ids.threadId,
-            occurredAt: item.updatedAt,
-            payload: item,
+            occurredAt: entry.message.updatedAt,
+            payload: entry.message,
           });
         }
-        yield* eventSink.write({ events });
-        for (const { item } of batch) written.set(item.id, item.status);
+        events.push({
+          id: EventId.make(`${item.id}:${item.status}`),
+          type: "turn-item.updated",
+          threadId: run.ids.threadId,
+          occurredAt: item.updatedAt,
+          payload: item,
+        });
       }
-    });
+      yield* eventSink.write({ events });
+      for (const { item } of batch) written.set(item.id, item.status);
+    }
+  });
 
   /**
    * Ends a run that can no longer be followed, so its source's replies unlock.
    * A failure fails the pass, and the close is retried next tick.
    */
-  const closeRun = (run: TrackedRun, reason: string) =>
-    Effect.gen(function* () {
-      yield* writeEntries(run, [
-        { item: hermesRunNoticeItem(run.ids, reason, yield* DateTime.now) },
-      ]);
-      yield* setHermesRun(run, false, "ended");
-    });
+  const closeRun = Effect.fn("HermesRunService.closeRun")(function* (
+    run: TrackedRun,
+    reason: string,
+  ) {
+    yield* writeEntries(run, [{ item: hermesRunNoticeItem(run.ids, reason, yield* DateTime.now) }]);
+    yield* setHermesRun(run, false, "ended");
+  });
 
-  const createThread = (
+  const createThread = Effect.fn("HermesRunService.createThread")(function* (
     run: TrackedRun,
     root: HermesSessionRow,
     project: OrchestrationProjectShell,
-  ) =>
-    Effect.gen(function* () {
-      yield* dispatch({
-        type: "thread.create",
-        createdBy: "system",
-        creationSource: "server",
-        commandId: CommandId.make(`${run.ids.prefix}:create`),
-        threadId: run.ids.threadId,
-        projectId: project.id,
-        title:
-          root.title?.trim() ||
-          `${run.sourceLabel} · ${RUN_TITLE_DATE.format(root.startedAt * 1000)}`,
-        modelSelection: {
-          instanceId: run.instanceId,
-          model: root.model ?? DEFAULT_MODEL_BY_PROVIDER[HERMES] ?? "hermes-4",
-        },
-        runtimeMode: DEFAULT_RUNTIME_MODE,
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        branch: null,
-        worktreePath: null,
-      });
-      yield* setHermesRun(run, true, "live");
-      run.created = true;
+  ) {
+    yield* dispatch({
+      type: "thread.create",
+      createdBy: "system",
+      creationSource: "server",
+      commandId: CommandId.make(`${run.ids.prefix}:create`),
+      threadId: run.ids.threadId,
+      projectId: project.id,
+      title:
+        root.title?.trim() ||
+        `${run.sourceLabel} · ${RUN_TITLE_DATE.format(root.startedAt * 1000)}`,
+      modelSelection: {
+        instanceId: run.instanceId,
+        model: root.model ?? DEFAULT_MODEL_BY_PROVIDER[HERMES] ?? "hermes-4",
+      },
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      branch: null,
+      worktreePath: null,
     });
+    yield* setHermesRun(run, true, "live");
+    run.created = true;
+  });
 
   const linkPullRequests = (
     run: TrackedRun,
@@ -596,167 +600,163 @@ const make = Effect.gen(function* () {
     );
 
   /** Mirrors whatever is new in one run. Returns true once the run needs no more ticks. */
-  const advance = (run: TrackedRun, nowSeconds: number) =>
-    Effect.gen(function* () {
-      const dbPath = path.join(run.profile.home, "state.db");
-      const chain = yield* Effect.sync(() => readHermesRunChain(dbPath, run.rootSessionId));
-      if (chain === null) {
-        // Unreadable is usually a lock and passes; a missing store never will.
-        const exists = yield* fs.exists(dbPath).pipe(Effect.orElseSucceed(() => true));
-        if (exists) return false;
-        if (run.created) yield* closeRun(run, "Its Hermes profile no longer exists.");
-        return true;
-      }
-      if (chain.length === 0) {
-        if (run.created) yield* closeRun(run, "Hermes no longer has this run's session.");
-        return true;
-      }
-      const root = chain[0]!;
-      run.latestSessionId = chain.at(-1)!.id;
-      const project = Option.getOrUndefined(
-        yield* projectService
-          .getShell(run.projectId)
-          .pipe(Effect.orElseSucceed(() => Option.none())),
-      );
-      if (project === undefined) return true;
-
-      const sessionIds = chain.map((session) => session.id);
-      const rows: HermesMessageRow[] = [];
-      let cursor = run.cursor;
-      for (;;) {
-        const page = yield* Effect.sync(() => readHermesRunMessages(dbPath, sessionIds, cursor));
-        if (page === null) return false;
-        rows.push(...page.rows);
-        cursor = page.lastId;
-        if (!page.full) break;
-      }
-      const lastMessageAt = rows.at(-1)?.timestamp ?? run.lastMessageAt;
-      const over = isHermesRunOver(chain, nowSeconds, lastMessageAt);
-
-      if (!run.created) {
-        const usedTools =
-          chain.some((session) => session.toolCallCount > 0) ||
-          rows.some((row) => row.toolCalls !== null);
-        const report = rows.findLast((row) => row.role === "assistant" && row.content.trim());
-        // Only runs that did something become threads, and never a silent one.
-        if (!usedTools) return over;
-        if (over && isSilentReport(report?.content ?? null)) return true;
-        yield* createThread(run, root, project);
-        // A thread this pass created holds nothing yet.
-        run.written ??= new Map();
-      }
-
-      // Tool calls still waiting on a result carry across passes; work on a
-      // copy so a failed pass can replay this batch from the same state.
-      const toolCalls = new Map(run.toolCalls);
-      const batch = hermesRunItemsFor(run.ids, rows, toolCalls);
-      yield* writeEntries(run, batch.entries);
-      yield* linkPullRequests(run, batch.pullRequestUrls, project);
-      run.toolCalls.clear();
-      for (const [id, call] of toolCalls) run.toolCalls.set(id, call);
-      run.cursor = cursor;
-      run.lastMessageAt = lastMessageAt;
-      if (batch.lastAssistantText !== null) run.finalReport = batch.lastAssistantText;
-
-      if (!over) {
-        if (chain.length > 1) yield* setHermesRun(run, true, `live:${run.latestSessionId}`);
-        return false;
-      }
-
-      const tip = chain.at(-1)!;
-      if (isSilentReport(run.finalReport)) {
-        yield* dispatch({
-          type: "thread.delete",
-          commandId: CommandId.make(`${run.ids.prefix}:delete`),
-          threadId: run.ids.threadId,
-        });
-        return true;
-      }
-      const failure =
-        tip.endedAt === null
-          ? "Hermes stopped reporting on this run before it finished."
-          : tip.endReason === "cron_incomplete_no_output"
-            ? "The run ended without a final answer."
-            : null;
-      if (failure !== null) {
-        const endedAt = DateTime.makeUnsafe(
-          Math.round((tip.endedAt ?? lastMessageAt ?? tip.startedAt) * 1000),
-        );
-        yield* writeEntries(run, [{ item: hermesRunNoticeItem(run.ids, failure, endedAt) }]);
-      }
-      yield* setHermesRun(run, false, "ended");
+  const advance = Effect.fn("HermesRunService.advance")(function* (
+    run: TrackedRun,
+    nowSeconds: number,
+  ) {
+    const dbPath = path.join(run.profile.home, "state.db");
+    const chain = yield* Effect.sync(() => readHermesRunChain(dbPath, run.rootSessionId));
+    if (chain === null) {
+      // Unreadable is usually a lock and passes; a missing store never will.
+      const exists = yield* fs.exists(dbPath).pipe(Effect.orElseSucceed(() => true));
+      if (exists) return false;
+      if (run.created) yield* closeRun(run, "Its Hermes profile no longer exists.");
       return true;
-    });
+    }
+    if (chain.length === 0) {
+      if (run.created) yield* closeRun(run, "Hermes no longer has this run's session.");
+      return true;
+    }
+    const root = chain[0]!;
+    run.latestSessionId = chain.at(-1)!.id;
+    const project = Option.getOrUndefined(
+      yield* projectService.getShell(run.projectId).pipe(Effect.orElseSucceed(() => Option.none())),
+    );
+    if (project === undefined) return true;
+
+    const sessionIds = chain.map((session) => session.id);
+    const rows: HermesMessageRow[] = [];
+    let cursor = run.cursor;
+    for (;;) {
+      const page = yield* Effect.sync(() => readHermesRunMessages(dbPath, sessionIds, cursor));
+      if (page === null) return false;
+      rows.push(...page.rows);
+      cursor = page.lastId;
+      if (!page.full) break;
+    }
+    const lastMessageAt = rows.at(-1)?.timestamp ?? run.lastMessageAt;
+    const over = isHermesRunOver(chain, nowSeconds, lastMessageAt);
+
+    if (!run.created) {
+      const usedTools =
+        chain.some((session) => session.toolCallCount > 0) ||
+        rows.some((row) => row.toolCalls !== null);
+      const report = rows.findLast((row) => row.role === "assistant" && row.content.trim());
+      // Only runs that did something become threads, and never a silent one.
+      if (!usedTools) return over;
+      if (over && isSilentReport(report?.content ?? null)) return true;
+      yield* createThread(run, root, project);
+      // A thread this pass created holds nothing yet.
+      run.written ??= new Map();
+    }
+
+    // Tool calls still waiting on a result carry across passes; work on a
+    // copy so a failed pass can replay this batch from the same state.
+    const toolCalls = new Map(run.toolCalls);
+    const batch = hermesRunItemsFor(run.ids, rows, toolCalls);
+    yield* writeEntries(run, batch.entries);
+    yield* linkPullRequests(run, batch.pullRequestUrls, project);
+    run.toolCalls.clear();
+    for (const [id, call] of toolCalls) run.toolCalls.set(id, call);
+    run.cursor = cursor;
+    run.lastMessageAt = lastMessageAt;
+    if (batch.lastAssistantText !== null) run.finalReport = batch.lastAssistantText;
+
+    if (!over) {
+      if (chain.length > 1) yield* setHermesRun(run, true, `live:${run.latestSessionId}`);
+      return false;
+    }
+
+    const tip = chain.at(-1)!;
+    if (isSilentReport(run.finalReport)) {
+      yield* dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make(`${run.ids.prefix}:delete`),
+        threadId: run.ids.threadId,
+      });
+      return true;
+    }
+    const failure =
+      tip.endedAt === null
+        ? "Hermes stopped reporting on this run before it finished."
+        : tip.endReason === "cron_incomplete_no_output"
+          ? "The run ended without a final answer."
+          : null;
+    if (failure !== null) {
+      const endedAt = DateTime.makeUnsafe(
+        Math.round((tip.endedAt ?? lastMessageAt ?? tip.startedAt) * 1000),
+      );
+      yield* writeEntries(run, [{ item: hermesRunNoticeItem(run.ids, failure, endedAt) }]);
+    }
+    yield* setHermesRun(run, false, "ended");
+    return true;
+  });
 
   /** Finds runs of switched-on sources that are not being followed yet. */
-  const discover = (context: {
+  const discover = Effect.fn("HermesRunService.discover")(function* (context: {
     readonly instanceId: ProviderInstanceId;
     readonly profiles: ReadonlyArray<HermesProfileHome>;
-  }) =>
-    Effect.gen(function* () {
-      // Labels come from Hermes's config, read only when a new run shows up.
-      let labels: Map<string, string> | null = null;
-      const labelFor = (source: EnabledSource) =>
-        Effect.gen(function* () {
-          if (labels === null) {
-            const listed = yield* listSources.pipe(Effect.orElseSucceed(() => null));
-            labels = new Map(
-              (listed?.sources ?? []).map((entry) => [
-                sourceId(entry.profile, entry.sourceKey),
-                entry.kind === "webhook" ? `webhook/${entry.label}` : entry.label,
-              ]),
-            );
-          }
-          return (
-            labels.get(sourceId(source.profile, source.sourceKey)) ?? labelOf(source.sourceKey)
-          );
-        });
-      for (const source of yield* Ref.get(enabledRef)) {
-        const profile = context.profiles.find((entry) => entry.profile === source.profile);
-        if (profile === undefined) continue;
-        const since = Option.match(DateTime.make(source.enabledAt), {
-          onNone: () => 0,
-          onSome: (enabledAt) => DateTime.toEpochMillis(enabledAt) / 1000,
-        });
-        const roots = yield* Effect.sync(() =>
-          readHermesRunRoots(path.join(profile.home, "state.db"), source.sourceKey, since),
+  }) {
+    // Labels come from Hermes's config, read only when a new run shows up.
+    let labels: Map<string, string> | null = null;
+    const labelFor = Effect.fn("HermesRunService.labelFor")(function* (source: EnabledSource) {
+      if (labels === null) {
+        const listed = yield* listSources.pipe(Effect.orElseSucceed(() => null));
+        labels = new Map(
+          (listed?.sources ?? []).map((entry) => [
+            sourceId(entry.profile, entry.sourceKey),
+            entry.kind === "webhook" ? `webhook/${entry.label}` : entry.label,
+          ]),
         );
-        for (const root of roots ?? []) {
-          const prefix = hermesRunIdPrefix({ profile: profile.profile, sessionId: root.id });
-          if (runs.has(prefix) || settledRoots.has(prefix)) continue;
-          const threadId = ThreadId.make(prefix);
-          const existing = yield* projections
-            .getThreadShell(threadId)
-            .pipe(Effect.orElseSucceed(() => null));
-          // A thread from before a restart that already finished, or that was
-          // deleted, needs nothing.
-          if (
-            existing !== null &&
-            (existing.deletedAt !== null || existing.hermesRun?.live !== true)
-          ) {
-            settledRoots.add(prefix);
-            continue;
-          }
-          runs.set(prefix, {
-            ids: { threadId, prefix },
-            profile,
-            instanceId: context.instanceId,
-            sourceKey: source.sourceKey,
-            projectId: existing?.projectId ?? source.projectId,
-            sourceLabel: yield* labelFor(source),
-            rootSessionId: root.id,
-            created: existing !== null,
-            cursor: 0,
-            lastMessageAt: null,
-            latestSessionId: root.id,
-            finalReport: null,
-            toolCalls: new Map(),
-            pullRequestUrls: new Set(),
-            written: null,
-          });
-        }
       }
+      return labels.get(sourceId(source.profile, source.sourceKey)) ?? labelOf(source.sourceKey);
     });
+    for (const source of yield* Ref.get(enabledRef)) {
+      const profile = context.profiles.find((entry) => entry.profile === source.profile);
+      if (profile === undefined) continue;
+      const since = Option.match(DateTime.make(source.enabledAt), {
+        onNone: () => 0,
+        onSome: (enabledAt) => DateTime.toEpochMillis(enabledAt) / 1000,
+      });
+      const roots = yield* Effect.sync(() =>
+        readHermesRunRoots(path.join(profile.home, "state.db"), source.sourceKey, since),
+      );
+      for (const root of roots ?? []) {
+        const prefix = hermesRunIdPrefix({ profile: profile.profile, sessionId: root.id });
+        if (runs.has(prefix) || settledRoots.has(prefix)) continue;
+        const threadId = ThreadId.make(prefix);
+        const existing = yield* projections
+          .getThreadShell(threadId)
+          .pipe(Effect.orElseSucceed(() => null));
+        // A thread from before a restart that already finished, or that was
+        // deleted, needs nothing.
+        if (
+          existing !== null &&
+          (existing.deletedAt !== null || existing.hermesRun?.live !== true)
+        ) {
+          settledRoots.add(prefix);
+          continue;
+        }
+        runs.set(prefix, {
+          ids: { threadId, prefix },
+          profile,
+          instanceId: context.instanceId,
+          sourceKey: source.sourceKey,
+          projectId: existing?.projectId ?? source.projectId,
+          sourceLabel: yield* labelFor(source),
+          rootSessionId: root.id,
+          created: existing !== null,
+          cursor: 0,
+          lastMessageAt: null,
+          latestSessionId: root.id,
+          finalReport: null,
+          toolCalls: new Map(),
+          pullRequestUrls: new Set(),
+          written: null,
+        });
+      }
+    }
+  });
 
   /**
    * Picks live runs back up after a restart from the threads themselves, so a
@@ -765,50 +765,49 @@ const make = Effect.gen(function* () {
    */
   let resumedLiveRuns = false;
   let closedWhileOff = false;
-  const resumeLiveRuns = (
+  const resumeLiveRuns = Effect.fn("HermesRunService.resumeLiveRuns")(function* (
     context: {
       readonly instanceId: ProviderInstanceId;
       readonly profiles: ReadonlyArray<HermesProfileHome>;
     } | null,
-  ) =>
-    Effect.gen(function* () {
-      for (const thread of yield* projections.getLiveHermesRunThreads()) {
-        const hermesRun = thread.hermesRun;
-        if (hermesRun?.live !== true) continue;
-        const prefix = hermesRunIdPrefix(hermesRun);
-        if (runs.has(prefix)) continue;
-        const profile = context?.profiles.find((entry) => entry.profile === hermesRun.profile);
-        const run: TrackedRun = {
-          ids: { threadId: thread.id, prefix },
-          profile: profile ?? { profile: hermesRun.profile, home: "" },
-          instanceId: context?.instanceId ?? thread.providerInstanceId,
-          sourceKey: hermesRun.sourceKey,
-          projectId: thread.projectId,
-          sourceLabel: hermesRun.sourceLabel,
-          rootSessionId: hermesRun.sessionId,
-          created: true,
-          cursor: 0,
-          lastMessageAt: null,
-          latestSessionId: hermesRun.latestSessionId,
-          finalReport: null,
-          toolCalls: new Map(),
-          pullRequestUrls: new Set(),
-          written: null,
-        };
-        // A run that can never be read again is closed rather than left
-        // holding its source's replies.
-        if (context === null) {
-          yield* closeRun(run, HERMES_OFF_REASON);
-          continue;
-        }
-        if (profile === undefined) {
-          yield* closeRun(run, "Its Hermes profile no longer exists.");
-          continue;
-        }
-        runs.set(prefix, run);
+  ) {
+    for (const thread of yield* projections.getLiveHermesRunThreads()) {
+      const hermesRun = thread.hermesRun;
+      if (hermesRun?.live !== true) continue;
+      const prefix = hermesRunIdPrefix(hermesRun);
+      if (runs.has(prefix)) continue;
+      const profile = context?.profiles.find((entry) => entry.profile === hermesRun.profile);
+      const run: TrackedRun = {
+        ids: { threadId: thread.id, prefix },
+        profile: profile ?? { profile: hermesRun.profile, home: "" },
+        instanceId: context?.instanceId ?? thread.providerInstanceId,
+        sourceKey: hermesRun.sourceKey,
+        projectId: thread.projectId,
+        sourceLabel: hermesRun.sourceLabel,
+        rootSessionId: hermesRun.sessionId,
+        created: true,
+        cursor: 0,
+        lastMessageAt: null,
+        latestSessionId: hermesRun.latestSessionId,
+        finalReport: null,
+        toolCalls: new Map(),
+        pullRequestUrls: new Set(),
+        written: null,
+      };
+      // A run that can never be read again is closed rather than left
+      // holding its source's replies.
+      if (context === null) {
+        yield* closeRun(run, HERMES_OFF_REASON);
+        continue;
       }
-      resumedLiveRuns = true;
-    });
+      if (profile === undefined) {
+        yield* closeRun(run, "Its Hermes profile no longer exists.");
+        continue;
+      }
+      runs.set(prefix, run);
+    }
+    resumedLiveRuns = true;
+  });
 
   /** One pass. Returns whether any followed run is still live. */
   const tick = Effect.gen(function* () {
