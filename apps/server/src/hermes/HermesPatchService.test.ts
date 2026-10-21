@@ -261,6 +261,7 @@ describe("HermesPatchService", () => {
       );
       // The restart command returns while the old process still answers.
       gateway.answerPid(4242);
+      // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- the service polls a real socket, so the fake gateway must change answers in real time
       yield* Effect.sleep("1500 millis").pipe(
         Effect.andThen(Effect.sync(() => gateway.answerPid(null))),
         Effect.forkScoped,

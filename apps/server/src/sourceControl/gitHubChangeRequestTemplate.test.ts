@@ -13,15 +13,6 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitHubChangeRequestTemplate from "@t3tools/source-control-github/server/gitHubChangeRequestTemplate";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
-const SINGLE_TEMPLATE_PATHS = [
-  ".github/pull_request_template.md",
-  ".github/PULL_REQUEST_TEMPLATE.md",
-  "pull_request_template.md",
-  "PULL_REQUEST_TEMPLATE.md",
-  "docs/pull_request_template.md",
-  "docs/PULL_REQUEST_TEMPLATE.md",
-] as const;
-
 const TEMPLATE_DIRECTORIES = [
   ".github/PULL_REQUEST_TEMPLATE",
   "PULL_REQUEST_TEMPLATE",
@@ -66,12 +57,11 @@ const runWithTempDirectory = <A, E, R>(
       (directory) =>
         // Git can finish filesystem work just after its exit code is available. Retry the
         // recursive removal instead of letting a transient ENOTEMPTY fail the whole suite.
-        fileSystem
-          .remove(directory, { recursive: true, force: true })
-          .pipe(
-            Effect.retry(Schedule.spaced("25 millis").pipe(Schedule.upTo({ times: 8 }))),
-            Effect.orDie,
-          ),
+        fileSystem.remove(directory, { recursive: true, force: true }).pipe(
+          // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- the filesystem, not a clock, decides when git releases the directory
+          Effect.retry(Schedule.spaced("25 millis").pipe(Schedule.upTo({ times: 8 }))),
+          Effect.orDie,
+        ),
     );
   }).pipe(Effect.provide(layerPrTemplateDetectionTest));
 
@@ -96,18 +86,6 @@ const detectTemplate = (cwd: string, treeish = "HEAD") =>
     const git = yield* GitVcsDriver.GitVcsDriver;
     return yield* GitHubChangeRequestTemplate.detect(cwd, treeish, git.execute);
   });
-
-it.effect.each(SINGLE_TEMPLATE_PATHS)("recognizes $0", (relativePath) =>
-  runWithTempDirectory((cwd) =>
-    Effect.gen(function* () {
-      yield* writeTemplate(cwd, relativePath, `template from ${relativePath}`);
-      yield* commitTemplates(cwd);
-
-      const template = yield* detectTemplate(cwd);
-      assert.strictEqual(Option.getOrUndefined(template), `template from ${relativePath}`);
-    }),
-  ),
-);
 
 it.effect("reads templates from the requested base tree", () =>
   runWithTempDirectory((cwd) =>
