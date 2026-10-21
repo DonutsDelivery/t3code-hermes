@@ -86,6 +86,10 @@
       // reports an entire component module when nothing imports it.
       "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
     },
+    "apps/marketing": {
+      // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
+      "ignoreDependencies": ["@astrojs/check"],
+    },
     "packages/client-runtime": {
       // Web and mobile consume this module through the package subpath export.
       // Knip's workspace analysis does not follow those package boundary imports.
