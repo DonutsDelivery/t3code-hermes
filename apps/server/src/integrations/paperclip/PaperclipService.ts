@@ -271,12 +271,3 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(PaperclipService, make);
-
-/** Unconfigured service, for suites that only need the RPC surface to resolve. */
-export const layerTest = Layer.succeed(
-  PaperclipService,
-  PaperclipService.of({
-    overview: () =>
-      Effect.succeed(emptyOverview(status("notConfigured", notConfiguredDetail(null)))),
-  }),
-);

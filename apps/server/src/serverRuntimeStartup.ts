@@ -189,7 +189,7 @@ const recordStartupHeartbeat = Effect.gen(function* () {
  * deployment. Probe results deliberately are not consulted: bootstrap runs
  * before provider probes settle, which would make the choice racy.
  */
-export const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
+const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
   instanceId: ProviderInstanceId.make(
     process.env.T3CODE_BOOTSTRAP_PROVIDER_INSTANCE?.trim() || "codex",
   ),
@@ -261,7 +261,7 @@ export const autoPullProjects = Effect.fn("autoPullProjects")(function* (
   );
 });
 
-export const resolveWelcomeBase = Effect.gen(function* () {
+const resolveWelcomeBase = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const segments = serverConfig.cwd.split(/[/\\]/).filter(Boolean);
   const projectName = segments[segments.length - 1] ?? "project";
@@ -431,36 +431,36 @@ export const startEffectWorkerWithRelay = Effect.fn(
   );
 });
 
-export const runOrderedV2StartupPhases = Effect.fn(
-  "serverRuntimeStartup.runOrderedV2StartupPhases",
-)(function* <
-  Import,
-  Recovery,
-  Bootstrap,
-  ImportError,
-  RecoveryError,
-  DelegationError,
-  WorkerError,
-  BootstrapError,
-  ImportContext,
-  RecoveryContext,
-  DelegationContext,
-  WorkerContext,
-  BootstrapContext,
->(input: {
-  readonly importLegacyShells: Effect.Effect<Import, ImportError, ImportContext>;
-  readonly recover: Effect.Effect<Recovery, RecoveryError, RecoveryContext>;
-  readonly recoverDelegatedTasks: Effect.Effect<void, DelegationError, DelegationContext>;
-  readonly startEffectWorker: Effect.Effect<void, WorkerError, WorkerContext>;
-  readonly autoBootstrap: Effect.Effect<Bootstrap, BootstrapError, BootstrapContext>;
-}) {
-  yield* input.importLegacyShells;
-  const recovery = yield* input.recover;
-  yield* input.recoverDelegatedTasks;
-  yield* input.startEffectWorker;
-  const bootstrap = yield* input.autoBootstrap;
-  return { recovery, bootstrap } as const;
-});
+const runOrderedV2StartupPhases = Effect.fn("serverRuntimeStartup.runOrderedV2StartupPhases")(
+  function* <
+    Import,
+    Recovery,
+    Bootstrap,
+    ImportError,
+    RecoveryError,
+    DelegationError,
+    WorkerError,
+    BootstrapError,
+    ImportContext,
+    RecoveryContext,
+    DelegationContext,
+    WorkerContext,
+    BootstrapContext,
+  >(input: {
+    readonly importLegacyShells: Effect.Effect<Import, ImportError, ImportContext>;
+    readonly recover: Effect.Effect<Recovery, RecoveryError, RecoveryContext>;
+    readonly recoverDelegatedTasks: Effect.Effect<void, DelegationError, DelegationContext>;
+    readonly startEffectWorker: Effect.Effect<void, WorkerError, WorkerContext>;
+    readonly autoBootstrap: Effect.Effect<Bootstrap, BootstrapError, BootstrapContext>;
+  }) {
+    yield* input.importLegacyShells;
+    const recovery = yield* input.recover;
+    yield* input.recoverDelegatedTasks;
+    yield* input.startEffectWorker;
+    const bootstrap = yield* input.autoBootstrap;
+    return { recovery, bootstrap } as const;
+  },
+);
 
 const make = Effect.fn("serverRuntimeStartup.make")(function* (options?: StartupOptions) {
   const serverConfig = yield* ServerConfig.ServerConfig;
