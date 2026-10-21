@@ -6,6 +6,11 @@
       "neededFor": "Hermes instances that run tools on an SSH host without copying credentials, skills, or cache to it.",
       "versions": [
         {
+          "hermesCommit": "fcace146e9ec62a6455b5a0894f55e5298574903",
+          "hermesCommitDate": "2026-10-20T23:09:33Z",
+          "file": "acp-central-ssh-execution/fcace146e9ec.patch"
+        },
+        {
           "hermesCommit": "835c3dd038d903182a66ecc45e34bf5e0de65f00",
           "hermesCommitDate": "2026-10-12T00:28:32Z",
           "file": "acp-central-ssh-execution/835c3dd038d9.patch"
