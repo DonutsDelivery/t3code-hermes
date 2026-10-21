@@ -1,0 +1,296 @@
+diff --git a/acp_adapter/session.py b/acp_adapter/session.py
+index 81f29bf359..ff40ca97f7 100644
+--- a/acp_adapter/session.py
++++ b/acp_adapter/session.py
+@@ -95,11 +95,21 @@ def _register_task_cwd(task_id: str, cwd: str) -> None:
+         return
+     try:
+         from tools.terminal_tool import register_task_env_overrides
+-        register_task_env_overrides(task_id, {"cwd": _translate_acp_cwd(cwd)})
++        register_task_env_overrides(task_id, {"cwd": _translate_acp_cwd(_resolve_tool_cwd(cwd))})
+     except Exception:
+         logger.debug("Failed to register ACP task cwd override", exc_info=True)
+ 
+ 
++def _resolve_tool_cwd(cwd: str) -> str:
++    """Tools on an SSH backend run in the configured remote ``TERMINAL_CWD``: the client's cwd is a
++    path on the Hermes host, which need not exist on the target."""
++    if (os.getenv("TERMINAL_ENV") or "local").strip().lower() == "ssh":
++        remote_cwd = (os.getenv("TERMINAL_CWD") or "").strip()
++        if remote_cwd:
++            return remote_cwd
++    return cwd
++
++
+ def _expand_acp_enabled_toolsets(toolsets: list[str] | None = None,
+                                  mcp_server_names: list[str] | None = None) -> list[str]:
+     """Return ACP toolsets plus explicit MCP server toolsets for this session."""
+diff --git a/gateway/run.py b/gateway/run.py
+index e11bbd75cb..19424ad3fb 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -2015,6 +2015,7 @@ def _bridge_terminal_config_to_env(_terminal_cfg: dict) -> None:
+         "ssh_user": "TERMINAL_SSH_USER",
+         "ssh_port": "TERMINAL_SSH_PORT",
+         "ssh_key": "TERMINAL_SSH_KEY",
++        "ssh_sync_files": "TERMINAL_SSH_SYNC_FILES",
+         "container_cpu": "TERMINAL_CONTAINER_CPU",
+         "container_memory": "TERMINAL_CONTAINER_MEMORY",
+         "container_disk": "TERMINAL_CONTAINER_DISK",
+diff --git a/hermes_cli/cli_config_load.py b/hermes_cli/cli_config_load.py
+index 9639720df0..746a3d26d6 100644
+--- a/hermes_cli/cli_config_load.py
++++ b/hermes_cli/cli_config_load.py
+@@ -86,7 +86,7 @@ _TERMINAL_ENV_MAPPINGS = {
+     for key in (
+         "degraded_mode", "cwd", "timeout", "home_mode", "lifetime_seconds", "docker_image",
+         "docker_forward_env", "singularity_image", "modal_image", "daytona_image", "vercel_runtime", "vercel_image",
+-        "ssh_host", "ssh_user", "ssh_port", "ssh_key", "container_cpu", "container_memory",
++        "ssh_host", "ssh_user", "ssh_port", "ssh_key", "ssh_sync_files", "container_cpu", "container_memory",
+         "container_disk", "container_persistent", "docker_volumes", "docker_env", "docker_extra_args",
+         "docker_shm_size", "docker_mount_cwd_to_workspace", "docker_network", "docker_run_as_host_user",
+         "docker_snap_compat",
+diff --git a/hermes_cli/config.py b/hermes_cli/config.py
+index 9a13eb8332..2ec717aca2 100644
+--- a/hermes_cli/config.py
++++ b/hermes_cli/config.py
+@@ -2129,7 +2129,7 @@ TERMINAL_CONFIG_ENV_MAP = {
+             "modal_mode", "degraded_mode", "cwd", "temp_dir", "timeout", "lifetime_seconds",
+             "docker_image", "docker_forward_env", "singularity_image", "modal_image",
+             "daytona_image", "vercel_runtime", "vercel_image", "ssh_host", "ssh_user", "ssh_port", "ssh_key",
+-            "container_cpu", "container_memory", "container_disk", "container_persistent",
++            "ssh_sync_files", "container_cpu", "container_memory", "container_disk", "container_persistent",
+             "docker_volumes", "docker_env", "docker_mount_cwd_to_workspace", "docker_network",
+             "docker_extra_args", "docker_shm_size", "docker_run_as_host_user", "docker_snap_compat",
+             "docker_persist_across_processes", "docker_shared_container_key",
+diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
+index cb5d755900..b93886fae5 100644
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -379,6 +379,9 @@ DEFAULT_CONFIG = {
+         # default for images whose entrypoints must start as root (e.g. the bundled Hermes image,
+         # which drops to `hermes` via s6-setuidgid). When on, SETUID/SETGID caps are omitted.
+         "docker_run_as_host_user": False,
++        # SSH mirrors Hermes credentials, skills, and cache into the target's ~/.hermes. Turn off for
++        # shell-only targets that must not receive local Hermes state (execution stays central).
++        "ssh_sync_files": True,
+         # Snap-packaged Docker under AppArmor (Ubuntu cloud images; LP#1908448) refuses to exec
+         # anything under `--init` or `--security-opt no-new-privileges` ("operation not
+         # permitted"). True drops those two flags; every other hardening stays. See #9730.
+diff --git a/tests/acp_adapter/test_session.py b/tests/acp_adapter/test_session.py
+index 2f2496093b..d836fc3266 100644
+--- a/tests/acp_adapter/test_session.py
++++ b/tests/acp_adapter/test_session.py
+@@ -59,6 +59,27 @@ class TestCreateSession:
+             "overrides": {"cwd": "/mnt/e/Projects/AI/paperclip"},
+         }
+ 
++    def test_register_task_cwd_uses_configured_remote_cwd_for_ssh(self, monkeypatch):
++        captured = {}
++
++        def fake_register_task_env_overrides(task_id, overrides):
++            captured["task_id"] = task_id
++            captured["overrides"] = overrides
++
++        monkeypatch.setenv("TERMINAL_ENV", "ssh")
++        monkeypatch.setenv("TERMINAL_CWD", "/opt/newsletter")
++        monkeypatch.setattr(
++            "tools.terminal_tool.register_task_env_overrides",
++            fake_register_task_env_overrides,
++        )
++
++        acp_session._register_task_cwd("session-remote", "/home/aeris/projects/remote-placeholder")
++
++        assert captured == {
++            "task_id": "session-remote",
++            "overrides": {"cwd": "/opt/newsletter"},
++        }
++
+ 
+ 
+ 
+diff --git a/tests/hermes_cli/test_env_loader.py b/tests/hermes_cli/test_env_loader.py
+index 1a6e618f2f..52d6f74a32 100644
+--- a/tests/hermes_cli/test_env_loader.py
++++ b/tests/hermes_cli/test_env_loader.py
+@@ -563,6 +563,24 @@ def test_config_yaml_terminal_omitted_key_does_not_clear_env(tmp_path, monkeypat
+     assert os.getenv("TERMINAL_TIMEOUT") == "600"
+ 
+ 
++def test_config_yaml_ssh_sync_files_overrides_stale_env(tmp_path, monkeypatch):
++    home = _seed_terminal_home(
++        tmp_path, monkeypatch,
++        config_yaml=(
++            "terminal:\n"
++            "  backend: ssh\n"
++            "  ssh_sync_files: false\n"
++        ),
++        env_text="TERMINAL_SSH_SYNC_FILES=true\n",
++    )
++
++    monkeypatch.delenv("TERMINAL_SSH_SYNC_FILES", raising=False)
++
++    load_hermes_dotenv(hermes_home=home)
++
++    assert os.getenv("TERMINAL_SSH_SYNC_FILES") == "False"
++
++
+ def test_other_profile_home_does_not_bridge_process_config(tmp_path, monkeypatch):
+     """Loading a DIFFERENT profile's .env must not re-bridge this process's
+     config.yaml — the shared bridge reads the process-global config, so
+diff --git a/tests/tools/test_ssh_environment.py b/tests/tools/test_ssh_environment.py
+index b68ebf9173..401c16dd64 100644
+--- a/tests/tools/test_ssh_environment.py
++++ b/tests/tools/test_ssh_environment.py
+@@ -226,6 +226,17 @@ class TestTerminalToolConfig:
+         finally:
+             env.cleanup()
+ 
++    def test_ssh_file_sync_defaults_enabled(self, monkeypatch):
++        monkeypatch.delenv("TERMINAL_SSH_SYNC_FILES", raising=False)
++        from tools.terminal_tool import _get_env_config
++        assert _get_env_config()["ssh_sync_files"] is True
++
++    def test_ssh_file_sync_can_be_disabled(self, monkeypatch):
++        monkeypatch.setenv("TERMINAL_SSH_SYNC_FILES", "false")
++        from tools.terminal_tool import _get_env_config
++        from tools.terminal_tool_backends import _ssh_config_from_config
++        assert _ssh_config_from_config(_get_env_config())["sync_files"] is False
++
+ 
+ class TestSSHPreflight:
+     def test_ensure_ssh_available_raises_clear_error_when_missing(self, monkeypatch):
+@@ -280,6 +291,22 @@ class TestSSHPreflight:
+         assert env._sync_manager is None
+         env._before_execute()
+ 
++    def test_sync_disabled_does_not_require_scp(self, monkeypatch):
++        requested = []
++
++        def fake_which(name):
++            requested.append(name)
++            return "/usr/bin/ssh" if name == "ssh" else None
++
++        monkeypatch.setattr(ssh_env.shutil, "which", fake_which)
++        monkeypatch.setattr(ssh_env.SSHEnvironment, "_establish_connection", lambda self: None)
++        monkeypatch.setattr(ssh_env.SSHEnvironment, "_detect_remote_home", lambda self: "/home/alice")
++        monkeypatch.setattr(ssh_env.SSHEnvironment, "init_session", lambda self: None)
++
++        ssh_env.SSHEnvironment(host="example.com", user="alice", sync_files=False)
++
++        assert requested == ["ssh"]
++
+ 
+ @pytest.fixture
+ def _mock_ssh_runtime(monkeypatch, tmp_path):
+diff --git a/tests/tools/test_terminal_config_env_sync.py b/tests/tools/test_terminal_config_env_sync.py
+index eec78ae003..d3ba0cabea 100644
+--- a/tests/tools/test_terminal_config_env_sync.py
++++ b/tests/tools/test_terminal_config_env_sync.py
+@@ -105,6 +105,12 @@ _CLI_ONLY_OK = frozenset({
+ })
+ 
+ 
++def test_ssh_sync_files_is_bridged_everywhere():
++    assert _cli_env_map()["ssh_sync_files"] == "TERMINAL_SSH_SYNC_FILES"
++    assert _gateway_env_map()["ssh_sync_files"] == "TERMINAL_SSH_SYNC_FILES"
++    assert "ssh_sync_files" in _save_config_env_sync_keys()
++
++
+ def test_cli_and_gateway_env_maps_agree():
+     """cli.py and gateway/run.py must bridge each terminal key to the same env var.
+ 
+diff --git a/tests/tools/test_terminal_env_bridge.py b/tests/tools/test_terminal_env_bridge.py
+index 2d50d0e888..48f39b110f 100644
+--- a/tests/tools/test_terminal_env_bridge.py
++++ b/tests/tools/test_terminal_env_bridge.py
+@@ -23,6 +23,7 @@ def _reset_bridge_state(monkeypatch):
+         "TERMINAL_CWD",
+         "TERMINAL_DOCKER_IMAGE",
+         "TERMINAL_SSH_HOST",
++        "TERMINAL_SSH_SYNC_FILES",
+     ):
+         monkeypatch.delenv(name, raising=False)
+     yield
+@@ -97,6 +98,19 @@ def test_ssh_config_preserves_remote_tilde_cwd(monkeypatch):
+     assert config["cwd"] == "~"
+ 
+ 
++def test_ssh_config_can_disable_remote_hermes_file_sync(monkeypatch):
++    _write_config(
++        "terminal:\n"
++        "  backend: ssh\n"
++        "  ssh_sync_files: false\n"
++    )
++
++    config = terminal_tool._get_env_config()
++
++    assert os.environ["TERMINAL_SSH_SYNC_FILES"] == "False"
++    assert config["ssh_sync_files"] is False
++
++
+ def test_env_is_preserved_when_config_has_no_terminal_section(monkeypatch):
+     _write_config("agent:\n  max_turns: 100\n")
+     monkeypatch.setenv("TERMINAL_ENV", "ssh")
+diff --git a/tools/environments/ssh.py b/tools/environments/ssh.py
+index 1ece284eb5..ea75a70375 100644
+--- a/tools/environments/ssh.py
++++ b/tools/environments/ssh.py
+@@ -29,9 +29,9 @@ _SSH_MULTIPLEX = os.name != "nt"
+ _load_hermes_env_vars = load_hermes_env_vars
+ 
+ 
+-def _ensure_ssh_available() -> None:
+-    """Fail fast with a clear error when the SSH client is unavailable."""
+-    for tool in ("ssh", "scp"):
++def _ensure_ssh_available(*, require_scp: bool = True) -> None:
++    """Fail fast with a clear error when the SSH client is unavailable (scp is only used by file sync)."""
++    for tool in ("ssh", "scp") if require_scp else ("ssh",):
+         if not shutil.which(tool):
+             raise RuntimeError(f"{tool.upper()} is not installed or not in PATH. "
+                                "Install OpenSSH client: apt install openssh-client")
+@@ -72,7 +72,7 @@ class SSHEnvironment(BaseEnvironment):
+             socket_key = f"{socket_key}:probe:{self._session_id}"
+         _socket_id = hashlib.sha256(socket_key.encode()).hexdigest()[:16]
+         self.control_socket = self.control_dir / f"{_socket_id}.sock"
+-        _ensure_ssh_available()
++        _ensure_ssh_available(require_scp=sync_files)
+         self._establish_connection()
+         if probe_only:
+             self._sync_manager = None
+diff --git a/tools/terminal_tool.py b/tools/terminal_tool.py
+index f1624611b6..edf13b9bfe 100644
+--- a/tools/terminal_tool.py
++++ b/tools/terminal_tool.py
+@@ -813,6 +813,7 @@ def _get_env_config() -> dict[str, Any]:
+         "ssh_user": _tenv("TERMINAL_SSH_USER", ""),
+         "ssh_port": _parse_env_var("TERMINAL_SSH_PORT", "22"),
+         "ssh_key": _tenv("TERMINAL_SSH_KEY", ""),
++        "ssh_sync_files": _tenv_bool("TERMINAL_SSH_SYNC_FILES", "true"),
+         # Exported env carries across commands (cwd always does). SSH follows
+         # terminal.persistent_shell; local has its own knob. Both default on.
+         "ssh_persistent": _tenv_bool(
+diff --git a/tools/terminal_tool_backends.py b/tools/terminal_tool_backends.py
+index e8973cee0c..6967177b0e 100644
+--- a/tools/terminal_tool_backends.py
++++ b/tools/terminal_tool_backends.py
+@@ -56,7 +56,8 @@ _BUILTIN_BACKENDS = "local, docker, singularity, modal, daytona, vercel_sandbox,
+ # Config -> kwargs shapers, driven by (out_key, config_key, default) tables. The container table's
+ # (key, default) literal is intentionally greppable; tools/terminal_tool.py keeps its own for the AST test.
+ _SSH_KEYS = (("host", "ssh_host", ""), ("user", "ssh_user", ""), ("port", "ssh_port", 22),
+-             ("key", "ssh_key", ""), ("persistent", "ssh_persistent", True))
++             ("key", "ssh_key", ""), ("persistent", "ssh_persistent", True),
++             ("sync_files", "ssh_sync_files", True))
+ _RESOURCE_KEYS = (("cpu", "container_cpu", 1), ("memory", "container_memory", 5120),
+                   ("disk", "container_disk", 51200), ("persistent_filesystem", "container_persistent", True))
+ _CONTAINER_KEYS = (
+@@ -211,7 +212,8 @@ def _build_ssh_env(*, cwd, timeout, ssh_config, probe_only=False, **_):
+         raise ValueError("SSH environment requires ssh_host and ssh_user to be configured")
+     return _SSHEnvironment(host=ssh_config["host"], user=ssh_config["user"], port=ssh_config.get("port", 22),
+                            key_path=ssh_config.get("key", ""), cwd=cwd, timeout=timeout, probe_only=probe_only,
+-                           persistent=ssh_config.get("persistent", True))
++                           persistent=ssh_config.get("persistent", True),
++                           sync_files=ssh_config.get("sync_files", True))
+ 
+ 
+ def _stamp_sandbox_home(env_obj, provider, cwd) -> None:
