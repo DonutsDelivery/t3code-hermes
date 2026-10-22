@@ -1,8 +1,10 @@
 name: Sync Upstream
 
-# Proposes pingdotgg/t3code merges every three hours and enables auto-merge once
-# CI passes. Each run also cuts a fork nightly for upstream commits already on
-# main that the fork has not shipped yet.
+# Follows pingdotgg/t3code's nightlies. Each run proposes merging the commit
+# upstream's newest nightly was built from, not upstream main: that commit
+# passed upstream's release, while main can sit between commits that only work
+# together. The sync PR auto-merges once CI passes. Each run also cuts a fork
+# nightly for upstream history on main that the fork has not shipped yet.
 #
 # Merge, not rebase: the fork's history is public and rebasing would rewrite
 # commits that are already pushed. A merge also keeps the Hermes commits intact
@@ -10,18 +12,20 @@ name: Sync Upstream
 #
 # A conflict files an `upstream-sync-conflict` issue; the Hermes upstream-sync
 # resolver picks it up from the webhook, merges its resolution PR once CI is
-# green, and dispatches this workflow again to release.
+# green, and dispatches this workflow again to release. Runs leave a conflict
+# that is already reported alone until a newer upstream nightly appears.
 #
-# A sync PR that fails CI gets newer upstream merged into it on each run, so
-# a breakage upstream fixes clears without anyone touching it. One still open
-# after six hours files an `upstream-sync-stuck` issue.
+# A sync PR that fails CI gets the next upstream nightly merged into it. One
+# open for over three hours files an `upstream-sync-stuck` issue.
 #
 # This workflow only ever runs on a fork (see the job guard). It is inert if it
 # is ever merged back upstream.
 
 on:
   schedule:
-    - cron: "50 */3 * * *"
+    # Upstream checks for a nightly every 30 minutes and ships at most every
+    # six hours, so an hourly look picks each one up within about an hour.
+    - cron: "50 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -37,7 +41,7 @@ concurrency:
 
 jobs:
   sync:
-    name: Merge upstream/main
+    name: Merge upstream nightly
     if: github.repository != 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -91,25 +95,56 @@ jobs:
           # newer upstream commits need another PR or conflict resolution.
           echo "merged_sha=$(git merge-base HEAD upstream/main)" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch fork nightly
+          # Upstream's previews build branches; only its nightlies build main.
+          tag=$(gh release list --repo pingdotgg/t3code --exclude-drafts --limit 50 \
+            --json tagName,publishedAt \
+            --jq '[.[] | select(.tagName | test("^v.*-nightly\\."))] | max_by(.publishedAt) | .tagName // empty')
+          if [[ -z "$tag" ]]; then
+            echo "::error::No published nightly among pingdotgg/t3code's last 50 releases."
+            exit 1
+          fi
+          nightly_sha=$(gh api "repos/pingdotgg/t3code/commits/$tag" --jq .sha)
+          if ! git merge-base --is-ancestor "$nightly_sha" upstream/main; then
+            echo "::error::Upstream nightly $tag ($nightly_sha) is not on upstream main."
+            exit 1
+          fi
+          echo "nightly_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "nightly_sha=$nightly_sha" >> "$GITHUB_OUTPUT"
+          echo "Following upstream nightly $tag ($nightly_sha)."
+
+      # release.yml decides again under its concurrency lock. Asking first
+      # keeps hourly runs from leaving a skipped release behind each time.
+      - id: release_due
+        name: Check for unshipped upstream history
+        uses: actions/github-script@v8
         env:
           UPSTREAM_SHA: ${{ steps.upstream.outputs.merged_sha }}
-        # release.yml checks under its concurrency lock whether this upstream
-        # history has shipped already. A pending sync PR never releases its head.
+        with:
+          script: |
+            const { shouldFollowUpstreamNightly } = require('./.github/scripts/check-nightly-release.cjs');
+            core.setOutput('due', await shouldFollowUpstreamNightly({ github, context, core, upstreamSha: process.env.UPSTREAM_SHA }));
+
+      - name: Dispatch fork nightly
+        if: steps.release_due.outputs.due == 'true'
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.merged_sha }}
+        # A pending sync PR never releases its head.
         run: >-
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main
           -f channel=nightly -f follow_upstream=true -f upstream_sha="$UPSTREAM_SHA"
 
       - id: merge
-        name: Merge upstream/main
+        name: Merge upstream nightly
         shell: bash
         env:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          TAG: ${{ steps.upstream.outputs.nightly_tag }}
+          NIGHTLY_SHA: ${{ steps.upstream.outputs.nightly_sha }}
         run: |
           set -uo pipefail
 
           before="$(git rev-parse HEAD)"
-          upstream_sha="$(git rev-parse upstream/main)"
+          upstream_sha="$NIGHTLY_SHA"
           {
             echo "before=$before"
             echo "upstream_sha=$upstream_sha"
@@ -117,9 +152,16 @@ jobs:
 
           if git merge-base --is-ancestor "$upstream_sha" HEAD; then
             echo "status=up-to-date" >> "$GITHUB_OUTPUT"
-            echo "Already up to date with upstream/main ($upstream_sha)."
+            echo "Already up to date with upstream nightly $TAG ($upstream_sha)."
             exit 0
           fi
+
+          # Whether an open issue with this label already names this text.
+          reported() {
+            gh issue list --repo "$GITHUB_REPOSITORY" --label "$1" --state open --limit 20 \
+              --json body,comments \
+              | jq -e --arg text "$2" 'any(.[]; [.body, .comments[].body] | any(contains($text)))' >/dev/null
+          }
 
           sync_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open \
             --limit 100 --json url,headRefName,author,createdAt \
@@ -139,16 +181,17 @@ jobs:
           if [[ -n "$pending_pr" ]]; then
             echo "status=pending" >> "$GITHUB_OUTPUT"
             echo "pr_url=$pending_pr" >> "$GITHUB_OUTPUT"
-            # CI takes minutes and runs come every three hours, so a sync PR
-            # still open here has almost always failed its checks. One that
-            # outlasts two runs is not clearing by itself and needs a person.
+            # CI takes minutes, so a sync PR open for hours has failed or is
+            # blocked. Upstream's nightly already passed its own release, so
+            # the cause is usually on the fork's side and needs a person.
             created=$(jq -r '.[0].createdAt' <<<"$sync_prs")
-            if (( $(date +%s) - $(date -d "$created" +%s) > 6 * 3600 )); then
+            if (( $(date +%s) - $(date -d "$created" +%s) > 3 * 3600 )) \
+              && ! reported upstream-sync-stuck "$pending_pr"; then
               echo "stuck=true" >> "$GITHUB_OUTPUT"
             fi
 
-            # The usual failure is upstream main being briefly broken. Merging
-            # newer upstream brings in upstream's own fix; waiting never would.
+            # A newer upstream nightly may carry the fix, and waiting on the
+            # old one never would.
             pending_branch=$(jq -r '.[0].headRefName' <<<"$sync_prs")
             git fetch --no-tags origin "$pending_branch" || exit 1
             if git merge-base --is-ancestor "$upstream_sha" FETCH_HEAD; then
@@ -156,18 +199,26 @@ jobs:
               exit 0
             fi
             git checkout --quiet -B "$pending_branch" FETCH_HEAD || exit 1
-            if ! git merge --no-edit upstream/main; then
+            if ! git merge --no-edit -m "Merge upstream nightly $TAG" "$upstream_sha"; then
               git merge --abort || true
-              echo "::warning::upstream/main does not merge cleanly into $pending_pr; waiting on it as is."
+              echo "::warning::Upstream nightly $TAG does not merge cleanly into $pending_pr; waiting on it as is."
               exit 0
             fi
             git push origin "HEAD:$pending_branch" || exit 1
             echo "refreshed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-            echo "Merged upstream/main ($upstream_sha) into $pending_pr."
+            echo "Merged upstream nightly $TAG ($upstream_sha) into $pending_pr."
             exit 0
           fi
 
-          if git merge --no-edit upstream/main; then
+          # Without this, every hourly run would comment on the conflict issue,
+          # and wake the resolver, until the resolution lands.
+          if reported "$CONFLICT_LABEL" "$upstream_sha"; then
+            echo "status=conflict-reported" >> "$GITHUB_OUTPUT"
+            echo "Merging upstream nightly $TAG already conflicted and is reported; waiting on its resolution."
+            exit 0
+          fi
+
+          if git merge --no-edit -m "Merge upstream nightly $TAG" "$upstream_sha"; then
             echo "status=ready" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -187,6 +238,7 @@ jobs:
         if: steps.merge.outputs.status == 'conflict'
         shell: bash
         env:
+          TAG: ${{ steps.upstream.outputs.nightly_tag }}
           UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
         run: |
           set -uo pipefail
@@ -194,7 +246,7 @@ jobs:
           conflicts="$(cat "$RUNNER_TEMP/conflicts.txt")"
 
           {
-            echo "Merging \`upstream/main\` (\`$UPSTREAM_SHA\`) into \`main\` conflicted."
+            echo "Merging upstream nightly \`$TAG\` (\`$UPSTREAM_SHA\`) into \`main\` conflicted."
             echo "The merge was aborted; \`main\` is unchanged."
             echo
             echo "Conflicted files:"
@@ -205,10 +257,10 @@ jobs:
               echo "- (none recorded — the merge failed for some other reason; see the run log)"
             fi
             echo
-            echo "Resolve by hand:"
+            echo "Resolve by merging exactly that commit, not \`upstream/main\`: the fork follows upstream's nightlies."
             echo
             echo '```bash'
-            echo "git fetch upstream && git merge upstream/main"
+            echo "git fetch upstream && git merge $UPSTREAM_SHA"
             echo '```'
             echo
             echo "\`ChatComposer.tsx\`, \`ChatView.tsx\`, and \`usageProviders.ts\` carry Hermes"
@@ -239,6 +291,7 @@ jobs:
           STATUS: ${{ steps.merge.outputs.status }}
           PENDING_PR: ${{ steps.merge.outputs.pr_url }}
           REFRESHED_SHA: ${{ steps.merge.outputs.refreshed_sha }}
+          TAG: ${{ steps.upstream.outputs.nightly_tag }}
           UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
           # Open the PR and enable auto-merge as the app when it is configured.
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
@@ -249,7 +302,7 @@ jobs:
           if [[ "$STATUS" == "pending" ]]; then
             pr_url="$PENDING_PR"
             if [[ -n "$REFRESHED_SHA" ]]; then
-              gh pr edit "$pr_url" --title "chore(sync): merge upstream through ${UPSTREAM_SHA:0:12}" \
+              gh pr edit "$pr_url" --title "chore(sync): merge upstream nightly $TAG" \
                 || echo "::warning::Could not retitle $pr_url."
             fi
             # Retry a previous CI dispatch/auto-merge setup failure without
@@ -266,7 +319,7 @@ jobs:
             head_sha="$(git rev-parse HEAD)"
             git push origin "HEAD:$sync_branch"
             {
-              echo "Merge upstream/main through \`$UPSTREAM_SHA\` while preserving upstream ancestry."
+              echo "Merge upstream nightly \`$TAG\` (\`$UPSTREAM_SHA\`) while preserving upstream ancestry."
               echo
               echo "Auto-merge uses a merge commit after all required CI checks pass."
               echo "The next sync run releases merged upstream changes that have not shipped yet."
@@ -274,7 +327,7 @@ jobs:
               echo "Opened by the upstream-sync workflow. The merge was clean, so no agent was involved."
             } > "$RUNNER_TEMP/sync-pr.md"
             pr_url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$sync_branch" \
-              --title "chore(sync): merge upstream through ${UPSTREAM_SHA:0:12}" \
+              --title "chore(sync): merge upstream nightly $TAG" \
               --body-file "$RUNNER_TEMP/sync-pr.md")
           fi
           echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
@@ -371,12 +424,12 @@ jobs:
           PR_URL: ${{ steps.merge.outputs.pr_url }}
         run: |
           {
-            echo "Sync PR $PR_URL has been open for over six hours, so \`main\` and fork nightlies are behind upstream."
-            echo "Release runs skip until it merges: they only ship upstream history that is on \`main\`."
+            echo "Sync PR $PR_URL has been open for over three hours, so \`main\` and fork nightlies are behind upstream."
+            echo "Releases wait until it merges: they only ship upstream history that is on \`main\`."
             echo
-            echo "Each sync run merges newer upstream into it unless that conflicts (the run log warns), so this is"
-            echo "not a breakage upstream has since fixed. Fix its checks on the sync branch, and close this issue once"
-            echo "it merges."
+            echo "It merges an upstream nightly, which already passed upstream's own release, so the failure is"
+            echo "most likely in the fork. Fix its checks on the sync branch, and close this issue once it merges."
+            echo "Each newer upstream nightly is merged into it unless that conflicts (the run log warns)."
             echo
             echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > "$RUNNER_TEMP/stuck.md"
@@ -388,19 +441,21 @@ jobs:
           title: Upstream sync PR stuck (${{ github.run_id }})
           body-file: ${{ runner.temp }}/stuck.md
           label: upstream-sync-stuck
-          label-description: An upstream sync PR has not merged for over six hours.
+          label-description: An upstream sync PR has not merged for over three hours.
           github-token: ${{ github.token }}
 
       - name: Summarize
-        if: always() && (steps.merge.outputs.status == 'ready' || steps.merge.outputs.status == 'pending' || steps.merge.outputs.status == 'up-to-date')
+        if: always() && (steps.merge.outputs.status == 'ready' || steps.merge.outputs.status == 'pending' || steps.merge.outputs.status == 'up-to-date' || steps.merge.outputs.status == 'conflict-reported')
         shell: bash
         env:
           STATUS: ${{ steps.merge.outputs.status }}
-          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+          TAG: ${{ steps.upstream.outputs.nightly_tag }}
           PR_URL: ${{ steps.propose.outputs.pr_url || steps.merge.outputs.pr_url }}
         run: |
           if [[ "$STATUS" == "up-to-date" ]]; then
-            echo "Already up to date with upstream/main (\`$UPSTREAM_SHA\`)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Already up to date with upstream nightly \`$TAG\`." >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$STATUS" == "conflict-reported" ]]; then
+            echo "Merging upstream nightly \`$TAG\` conflicted earlier; waiting on its resolution." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Sync PR: $PR_URL. Main advances after required checks pass." >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -421,7 +476,7 @@ jobs:
             echo "The nightly upstream merge failed somewhere other than a merge conflict."
             echo
             echo "- Merge status: \`${STATUS:-(never reached)}\`"
-            echo "- Upstream head: \`${UPSTREAM_SHA:-(unknown)}\`"
+            echo "- Upstream nightly: \`${UPSTREAM_SHA:-(unknown)}\`"
             echo
             echo "Check the sync PR step for a branch push, PR creation, CI dispatch, or auto-merge failure."
             echo
