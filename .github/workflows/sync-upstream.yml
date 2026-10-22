@@ -13,8 +13,9 @@ name: Sync Upstream
 # green, and dispatches this workflow again to release.
 #
 # A sync PR that fails CI gets newer upstream merged into it on each run, so
-# a breakage upstream fixes clears without anyone touching it. One still open
-# after six hours files an `upstream-sync-stuck` issue.
+# a breakage upstream fixes clears without anyone touching it, unless the new
+# range edits workflows. One still open after six hours files an
+# `upstream-sync-stuck` issue.
 #
 # This workflow only ever runs on a fork (see the job guard). It is inert if it
 # is ever merged back upstream.
@@ -158,7 +159,12 @@ jobs:
               echo "::warning::upstream/main does not merge cleanly into $pending_pr; waiting on it as is."
               exit 0
             fi
-            # Rejected like a new sync branch when the range edits workflows.
+            # The app has no workflows permission, so GitHub would reject the
+            # push. Leave the PR for the stuck report rather than fail each run.
+            if ! git diff --quiet ORIG_HEAD HEAD -- .github/workflows; then
+              echo "::warning::Newer upstream edits .github/workflows, which the sync app cannot push; waiting on $pending_pr as is."
+              exit 0
+            fi
             git push origin "HEAD:$pending_branch" || exit 1
             echo "refreshed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             echo "Merged upstream/main ($upstream_sha) into $pending_pr."
@@ -361,8 +367,9 @@ jobs:
           label-description: Upstream changed sibling provider adapters; check the Hermes copy.
           github-token: ${{ github.token }}
 
+      # Not gated on success: a refresh push that fails still leaves the PR stuck.
       - name: Compose stuck sync PR report
-        if: steps.merge.outputs.stuck == 'true'
+        if: ${{ !cancelled() && steps.merge.outputs.stuck == 'true' }}
         shell: bash
         env:
           PR_URL: ${{ steps.merge.outputs.pr_url }}
@@ -371,15 +378,15 @@ jobs:
             echo "Sync PR $PR_URL has been open for over six hours, so \`main\` and fork nightlies are behind upstream."
             echo "Release runs skip until it merges: they only ship upstream history that is on \`main\`."
             echo
-            echo "Each sync run merges newer upstream into it when that merges cleanly (the run log warns when it"
-            echo "does not), so this is not a breakage upstream has since fixed. Fix its checks on the sync branch,"
-            echo "and close this issue once it merges."
+            echo "Each sync run merges newer upstream into it, except when that conflicts or edits \`.github/workflows\`,"
+            echo "which the sync app cannot push (the run log warns). Fix its checks, or merge upstream into the sync"
+            echo "branch yourself, and close this issue once it merges."
             echo
             echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > "$RUNNER_TEMP/stuck.md"
 
       - name: Report stuck sync PR
-        if: steps.merge.outputs.stuck == 'true'
+        if: ${{ !cancelled() && steps.merge.outputs.stuck == 'true' }}
         uses: ./.github/actions/report-automation-failure
         with:
           title: Upstream sync PR stuck (${{ github.run_id }})

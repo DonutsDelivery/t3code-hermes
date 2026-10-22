@@ -1697,7 +1697,13 @@ jobs:
             echo
             jq -r 'to_entries[] | "- \(.key): **\(.value.result)**"' <<< "$RESULTS"
             echo
-            echo "No release was published for this run."
+            if [[ "${{ needs.release.result }}" == "success" ]]; then
+              echo "\`${{ needs.preflight.outputs.tag }}\` was published, but without what the failed jobs above build."
+              echo "Automatic nightlies treat it as shipped and wait for new upstream on \`main\`."
+              echo "To ship a complete build sooner, run Release on \`main\` with the nightly channel."
+            else
+              echo "No release was published for this run."
+            fi
             echo
             echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > "$RUNNER_TEMP/failure.md"

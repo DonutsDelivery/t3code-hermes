@@ -82,6 +82,17 @@ jobs:
             --filter=@t3tools/mobile... \
             --filter=@t3tools/scripts...
 
+      # The postinstall only warns when a download fails, so check the stamps
+      # it writes on success and retry it once.
+      - name: Check vendored markdown assets
+        working-directory: apps/mobile/node_modules/react-native-enriched-markdown
+        shell: bash
+        run: |
+          stamps=(cpp/highlight/vendor/grammars/.stamp ios/vendor/.stamp)
+          complete() { for stamp in "${stamps[@]}"; do [[ -f "$stamp" ]] || return 1; done; }
+          complete || INIT_CWD="$GITHUB_WORKSPACE" node postinstall.mjs
+          complete || { echo "::error::react-native-enriched-markdown assets are still missing: ${stamps[*]}"; exit 1; }
+
       - name: Show toolchain
         run: xcodebuild -version
 

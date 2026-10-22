@@ -8,41 +8,55 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const RELEASE_WORKFLOWS = [
-  "release.yml",
-  "release-desktop.yml",
-  "mobile-ipa.yml",
-  "mobile-apk.yml",
-];
 const HOSTED =
   /^(ubuntu-(latest|\d+\.\d+)(-arm)?|windows-(latest|\d{4}|11-arm)|macos-(latest|\d+))$/;
 const UPSTREAM_ONLY = "github.repository == 'pingdotgg/t3code'";
+const FORWARDED_INPUT = /^\$\{\{\s*inputs\.[\w-]+\s*\}\}$/;
 
-/** `job: label` for each literal runner label a job the fork runs asks for. */
-function forkRunnerLabels(workflow) {
-  const jobs = workflow
+/** Runner labels (`job: label`) and local reusable workflows of the jobs the fork runs. */
+function forkJobs(workflow) {
+  const blocks = workflow
     .slice(workflow.search(/^jobs:\s*$/m))
     .split(/^(?=  [\w-]+:\s*$)/m)
     .slice(1);
-  return jobs.flatMap((block) => {
+  const labels = [];
+  const calls = [];
+  for (const block of blocks) {
     const job = block.match(/^  ([\w-]+):/)[1];
-    // A job skipped by its `if:` is never queued, whatever runner it names.
+    // A job its `if:` keeps off the fork is never queued, whatever runner it
+    // names. Anything looser than a conjunction might still let the fork in.
     const jobIf = block.match(/^    if:(.*(?:\n {5,}.*)*)/m)?.[1] ?? "";
-    if (jobIf.includes(UPSTREAM_ONLY)) return [];
-    return (
-      [...block.matchAll(/^ +(?:runs-on|runner|verify_runner):(.*)$/gm)]
-        .map((match) =>
-          match[1]
-            .replace(/\s+#.*$/, "")
-            .trim()
-            .replace(/^(["'])(.*)\1$/, "$2"),
-        )
-        // Expressions forward an input; the caller passing it is checked instead.
-        .filter((label) => !label.includes("${{"))
-        // An empty value is a block-form list or runner group, which is not hosted.
-        .map((label) => `${job}: ${label || "(not a single label)"}`)
-    );
-  });
+    if (jobIf.includes(UPSTREAM_ONLY) && !jobIf.includes("||")) continue;
+    for (const [, value] of block.matchAll(/^ +(?:runs-on|runner|verify_runner):(.*)$/gm)) {
+      const label = value
+        .replace(/\s+#.*$/, "")
+        .trim()
+        .replace(/^(["'])(.*)\1$/, "$2");
+      // Checked where the caller passes it. Any other expression fails below.
+      if (FORWARDED_INPUT.test(label)) continue;
+      // An empty value is a block-form list or runner group, which is not hosted.
+      labels.push(`${job}: ${label || "(not a single label)"}`);
+    }
+    for (const [, file] of block.matchAll(/^    uses: \.\/\.github\/workflows\/([\w.-]+)\s*$/gm)) {
+      calls.push(file);
+    }
+  }
+  return { labels, calls };
+}
+
+/** Every workflow release.yml reaches on the fork, with its jobs' runner labels. */
+function releasePath(read) {
+  const files = [];
+  const labels = [];
+  const visit = (file) => {
+    if (files.includes(file)) return;
+    files.push(file);
+    const jobs = forkJobs(read(file));
+    labels.push(...jobs.labels.map((entry) => `${file} ${entry}`));
+    jobs.calls.forEach(visit);
+  };
+  visit("release.yml");
+  return { files, labels };
 }
 
 const notHosted = (labels) => labels.filter((entry) => !HOSTED.test(entry.split(": ")[1]));
@@ -66,17 +80,22 @@ jobs:
       verify_runner: windows-11-arm
   marketing:
     if: \${{ !cancelled() && github.repository == 'pingdotgg/t3code' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    uses: ./.github/workflows/publish-aur.yml
   announce:
     if: |
       !cancelled() &&
       github.repository == 'pingdotgg/t3code'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+  either:
+    if: github.repository == 'pingdotgg/t3code' || inputs.force
+    runs-on: blacksmith-4vcpu-ubuntu-2404
   bundle:
     if: \${{ !cancelled() }}
     runs-on: ubuntu-24.04-arm
     env:
       CHANNEL: \${{ github.repository == 'pingdotgg/t3code' && 'nightly' || 'dev' }}
+  matrix:
+    runs-on: \${{ matrix.os }}
   mac:
     runs-on: [self-hosted, macOS]
   grouped:
@@ -85,20 +104,25 @@ jobs:
   reusable:
     runs-on: \${{ inputs.runner }}
 `;
-  assert.deepEqual(notHosted(forkRunnerLabels(workflow)), [
+  const jobs = forkJobs(workflow);
+  assert.deepEqual(notHosted(jobs.labels), [
     "build: blacksmith-8vcpu-ubuntu-2404",
     "desktop: blacksmith-12vcpu-macos-26",
+    "either: blacksmith-4vcpu-ubuntu-2404",
+    "matrix: ${{ matrix.os }}",
     "mac: [self-hosted, macOS]",
     "grouped: (not a single label)",
   ]);
+  assert.deepEqual(jobs.calls, ["release-desktop.yml"]);
 });
 
-test("release workflows only ask for GitHub-hosted runners", () => {
-  const labels = RELEASE_WORKFLOWS.flatMap((file) =>
-    forkRunnerLabels(fs.readFileSync(path.join(__dirname, "../workflows", file), "utf8")).map(
-      (entry) => `${file} ${entry}`,
-    ),
+test("the release path only asks for GitHub-hosted runners", () => {
+  const { files, labels } = releasePath((file) =>
+    fs.readFileSync(path.join(__dirname, "../workflows", file), "utf8"),
   );
+  for (const file of ["release-desktop.yml", "mobile-ipa.yml", "mobile-apk.yml"]) {
+    assert.ok(files.includes(file), `release.yml no longer reaches ${file}; found ${files}`);
+  }
   assert.ok(
     labels.length > 10,
     `expected the release path's runner labels, found ${labels.length}`,
