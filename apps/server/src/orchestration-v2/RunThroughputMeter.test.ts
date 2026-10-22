@@ -173,7 +173,56 @@ describe("RunThroughputMeter", () => {
       [100, assistantText(400)],
       [200, assistantText(800)],
     ]);
-    expect(readRunMeter(meter, 200)).toBeNull();
+    expect(readRunMeter(meter, 200)).toMatchObject({ tokensPerSecond: null, outputTokens: 0 });
+  });
+
+  it("keeps a response generating at the rate before it while its output is held back", () => {
+    const meter = makeRunMeterState(threadId, runId, { inheritedRate: 90 });
+    feed(meter, [[0, progress(0)]]);
+    // Hidden thinking: nothing streams, but the response has not ended.
+    expect(readRunMeter(meter, 12_000)).toMatchObject({ tokensPerSecond: 90, idle: false });
+    feed(meter, [[15_000, measured(1_395, 15_000)]]);
+    expect(readRunMeter(meter, 15_000)).toMatchObject({ tokensPerSecond: 93, idle: false });
+    expect(readRunMeter(meter, 17_000)?.idle).toBe(true);
+  });
+
+  it("counts a response too short to time without letting it move the rate or peak", () => {
+    const meter = makeRunMeterState(threadId, runId);
+    feed(meter, [
+      [0, progress(0)],
+      [15_000, measured(1_395, 15_000)],
+      [15_100, toolCall()],
+      [20_000, toolCall()],
+      // A tool call whose start arrived with its first tokens already generated.
+      [21_000, progress(0)],
+      [21_050, progress(100)],
+      [21_150, progress(100)],
+      [21_250, progress(100)],
+      [21_350, progress(100)],
+    ]);
+    // Its text alone reads 250 tokens per second.
+    expect(readRunMeter(meter, 21_350)?.tokensPerSecond).toBe(250);
+    feed(meter, [[21_400, measured(78, 400)]]);
+    expect(readRunMeter(meter, 21_400)).toMatchObject({
+      tokensPerSecond: 93,
+      peakTokensPerSecond: 93,
+      averageTokensPerSecond: 93,
+      outputTokens: 1_473,
+    });
+  });
+
+  it("averages each response's wait from its request as the time to first token", () => {
+    const meter = makeRunMeterState(threadId, runId, { startedAtMs: 0 });
+    feed(meter, [
+      // The prompt waits 3 s for the first response.
+      [3_000, progress(0)],
+      [6_000, measured(300, 3_000)],
+      // A tool runs, then its result waits 1 s for the next response.
+      [6_100, toolCall()],
+      [7_000, toolCall()],
+      [8_000, progress(0)],
+    ]);
+    expect(readRunMeter(meter, 8_000)?.timeToFirstTokenMs).toBe(2_000);
   });
 
   it("keeps the run's average, peak, and output tokens, corrected by exact usage", () => {
@@ -263,16 +312,26 @@ describe("RunThroughputMeter", () => {
       yield* meter.endRun(first);
 
       const next = { threadId, runId: RunId.make("run-2") };
-      yield* meter.observe(next, progress(0));
-      const [current] = yield* meter.stream(threadId).pipe(Stream.take(1), Stream.runCollect);
+      yield* meter.startRun(next);
+      const [sent] = yield* meter.stream(threadId).pipe(Stream.take(1), Stream.runCollect);
       // The new run's own totals start empty.
-      expect(current).toEqual({
+      expect(sent).toEqual({
         runId: next.runId,
         tokensPerSecond: 1000,
         idle: true,
         averageTokensPerSecond: null,
         peakTokensPerSecond: null,
         outputTokens: 0,
+      });
+
+      // Its first response starts 1.5 s after the prompt.
+      yield* TestClock.adjust(1_500);
+      yield* meter.observe(next, progress(0));
+      const [responding] = yield* meter.stream(threadId).pipe(Stream.take(1), Stream.runCollect);
+      expect(responding).toMatchObject({
+        tokensPerSecond: 1000,
+        idle: false,
+        timeToFirstTokenMs: 1_500,
       });
     }),
   );

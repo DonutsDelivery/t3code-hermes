@@ -3435,20 +3435,15 @@ function formatClaudeUsageLimitWait(waitMs: number): string {
 type ClaudeStreamEvent = Extract<SDKMessage, { readonly type: "stream_event" }>["event"];
 
 /**
- * Characters of visible model output a raw stream frame carries: text or tool
- * input. Thinking is left out: what streams is a summary trickling behind the
- * real thinking, which only the message's final usage counts.
+ * Characters of answer text a raw stream frame carries. Thinking is left out:
+ * what streams is a summary trickling behind the real thinking. So is tool
+ * input, which lands in buffered chunks that read as a crawl or a spike. The
+ * message's final usage counts both.
  */
 function claudeStreamOutputChars(event: ClaudeStreamEvent): number {
-  if (event.type !== "content_block_delta") return 0;
-  switch (event.delta.type) {
-    case "text_delta":
-      return event.delta.text.length;
-    case "input_json_delta":
-      return event.delta.partial_json.length;
-    default:
-      return 0;
-  }
+  return event.type === "content_block_delta" && event.delta.type === "text_delta"
+    ? event.delta.text.length
+    : 0;
 }
 
 /** Raw deltas arrive per token; the throughput meter only needs them this often. */
@@ -6604,9 +6599,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return { node, request, turnItem };
         });
 
-        // Output not yet reported to the throughput meter. Text and tool input
-        // only land as finished blocks, so the meter counts these deltas instead,
-        // then takes each message's exact usage once it ends.
+        // Output not yet reported to the throughput meter. Text only lands as
+        // finished blocks, so the meter counts these deltas instead, then takes
+        // each message's exact usage once it ends.
         const pendingOutput = {
           chars: 0,
           reportedAtMs: 0,
@@ -7828,8 +7823,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (event.type === "message_start") {
               pendingOutput.messageStartedAtMs = yield* Clock.currentTimeMillis;
               pendingOutput.heldBack = false;
-              // Tells the meter this run's output comes from these reports, not
-              // from the reasoning items streamed below.
+              // Marks the response's start, and tells the meter this run's output
+              // comes from these reports, not from the reasoning items streamed below.
               yield* emitProviderEvent({
                 type: "output.progress",
                 driver: CLAUDE_PROVIDER,

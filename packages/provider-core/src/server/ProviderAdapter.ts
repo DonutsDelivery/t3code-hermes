@@ -145,10 +145,11 @@ export const ProviderAdapterV2Event = Schema.Union([
     plan: OrchestrationV2PlanArtifact,
   }),
   /**
-   * Characters of output the model just generated (0 as a response starts),
-   * from adapters whose raw deltas outrun their turn items (Claude streams text
-   * and tool input that only lands as a finished block). Feeds the live
-   * throughput meter, which then ignores the run's text items; never persisted.
+   * Characters of output the model just generated, from adapters whose raw
+   * deltas outrun their turn items (Claude streams text that only lands as a
+   * finished block). Feeds the live throughput meter, which then ignores the
+   * run's text items; never persisted. 0 marks a response starting: the meter
+   * counts the model as generating until its `output.measured`.
    */
   Schema.Struct({
     type: Schema.Literal("output.progress"),
