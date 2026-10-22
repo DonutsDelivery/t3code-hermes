@@ -1,5 +1,5 @@
 import { formatPercent, formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
-import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge";
+import { isModelCostUnknown, type ModelRow } from "@t3tools/shared/usageMerge";
 
 import { mergeAnsweredUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -41,19 +41,18 @@ export function UsageModelDialog({
   onSetPrice,
   onClose,
 }: {
-  readonly model: ModelTotals;
+  readonly model: ModelRow;
   readonly environments: readonly EnvironmentUsageStatus[];
   readonly metric: UsageChartMetric;
   readonly chartWindow: UsageChartWindow;
   readonly onSetPrice: () => void;
   readonly onClose: () => void;
 }) {
+  const providers = model.byProvider.map((part) => part.provider);
   const usage = mergeAnsweredUsage(
     environments,
-    (bucket) => bucket.provider === model.provider && bucket.model === model.model,
+    (bucket) => bucket.model === model.model && providers.includes(bucket.provider),
   );
-  const providers = [model.provider];
-  const presentation = PROVIDER_PRESENTATION[model.provider];
   const costUnknown = isModelCostUnknown(model);
   const hitRate = cacheHitRate(model);
   const perMillion = costPerMillionTokens(model);
@@ -74,15 +73,18 @@ export function UsageModelDialog({
       <DialogPopup className="max-w-3xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <ProviderInstanceIcon
-              driverKind={presentation.driverKind}
-              displayName={presentation.label}
-              iconClassName="size-5"
-            />
+            {providers.map((provider) => (
+              <ProviderInstanceIcon
+                key={provider}
+                driverKind={PROVIDER_PRESENTATION[provider].driverKind}
+                displayName={PROVIDER_PRESENTATION[provider].label}
+                iconClassName="size-5"
+              />
+            ))}
             <DialogTitle>{model.model}</DialogTitle>
           </div>
           <DialogDescription>
-            {presentation.label}
+            {providers.map((provider) => PROVIDER_PRESENTATION[provider].label).join(" + ")}
             {costUnknown ? "" : ` · ${formatPercent(model.costShare)} of cost`}
           </DialogDescription>
         </DialogHeader>

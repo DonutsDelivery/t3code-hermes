@@ -8,7 +8,9 @@ import {
 
 import type { ShareSegment } from "./UsageShareBar";
 
-export function sortModelsByTokens(models: readonly ModelTotals[]) {
+export function sortModelsByTokens<T extends Pick<ModelTotals, "totalTokens" | "costUsd">>(
+  models: readonly T[],
+) {
   return models.toSorted(
     (left, right) => right.totalTokens - left.totalTokens || right.costUsd - left.costUsd,
   );
@@ -18,7 +20,10 @@ export function sortModelsByTokens(models: readonly ModelTotals[]) {
  * A model's share of the selected metric, or `null` for a cost share of an
  * unknown cost. An unpriced model still has a real token share.
  */
-export function modelShare(model: ModelTotals, metric: "cost" | "tokens"): number | null {
+export function modelShare(
+  model: Omit<ModelTotals, "provider">,
+  metric: "cost" | "tokens",
+): number | null {
   if (metric === "tokens") return model.tokenShare;
   return isModelCostUnknown(model) ? null : model.costShare;
 }
@@ -27,13 +32,13 @@ export function modelShare(model: ModelTotals, metric: "cost" | "tokens"): numbe
  * Share of a model's input read from cache, or `null` without input. Cache
  * writes count as misses: that input was processed in full.
  */
-export function cacheHitRate({ tokens }: ModelTotals): number | null {
+export function cacheHitRate({ tokens }: Pick<ModelTotals, "tokens">): number | null {
   const input = tokens.uncachedInputTokens + tokens.cachedInputTokens + tokens.cacheCreationTokens;
   return input === 0 ? null : tokens.cachedInputTokens / input;
 }
 
 /** Effective USD per million priced tokens, or `null` when none were priced. */
-export function costPerMillionTokens(model: ModelTotals): number | null {
+export function costPerMillionTokens(model: Omit<ModelTotals, "provider">): number | null {
   const pricedTokens = model.totalTokens - model.unpricedTokens;
   return pricedTokens <= 0 || isModelCostUnknown(model)
     ? null

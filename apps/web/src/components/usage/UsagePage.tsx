@@ -28,9 +28,11 @@ import {
 import {
   isCompatibleUsageContractVersion,
   isModelCostUnknown,
+  modelRows,
   type DailyTotals,
   type HourlyTotals,
   type MergedUsage,
+  type ModelRow,
 } from "@t3tools/shared/usageMerge";
 
 import { isElectron } from "../../env";
@@ -155,15 +157,13 @@ function UsageModelDialogHost({
   onSetPrice,
   ...dialogProps
 }: Omit<Parameters<typeof UsageModelDialog>[0], "model" | "onSetPrice" | "onClose"> & {
-  readonly models: MergedUsage["models"];
+  readonly models: readonly ModelRow[];
   readonly onSetPrice: (model: string) => void;
 }) {
   const selectedKey = useAtomValue(selectedUsageModelKeyAtom);
   useEffect(() => () => selectUsageModel(null), []);
   const model =
-    selectedKey === null
-      ? undefined
-      : models.find((candidate) => `${candidate.provider}:${candidate.model}` === selectedKey);
+    selectedKey === null ? undefined : models.find((candidate) => candidate.key === selectedKey);
   if (model === undefined) return null;
   return (
     <UsageModelDialog
@@ -208,6 +208,7 @@ export function UsagePage() {
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] =
     useState<ReadonlySet<EnvironmentId> | null>(null);
   const hiddenProviders = new Set(preferences.hiddenProviders);
+  const mergeModelProviders = preferences.mergeModelProviders === true;
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
   const {
@@ -219,6 +220,7 @@ export function UsagePage() {
     refresh,
   } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
   const merged = shown?.merged ?? answeredUsage;
+  const breakdownModelRows = modelRows(merged.models, mergeModelProviders);
   const shownWindow = shown?.window ?? window;
   const shownHourly = shownWindow.resolution === "hour";
   const refreshingUsage = isRefreshing && !showingLimits;
@@ -565,6 +567,11 @@ export function UsagePage() {
                   void refresh();
                   void refreshLimits(false, true);
                 }}
+                modelRows={breakdownModelRows}
+                mergeModelProviders={mergeModelProviders}
+                onMergeModelProvidersChange={(merge) =>
+                  updatePreferences({ mergeModelProviders: merge })
+                }
                 onSelectModel={selectUsageModel}
               />
             )}
@@ -573,7 +580,7 @@ export function UsagePage() {
       </div>
       {showingLimits ? null : (
         <UsageModelDialogHost
-          models={merged.models}
+          models={breakdownModelRows}
           environments={selectedEnvironments}
           metric={metric === "tokens" ? "tokens" : "cost"}
           chartWindow={{
@@ -615,6 +622,9 @@ function UsageOverview({
   cursorAccessEnvironments,
   showChatGptSharing,
   onCursorEnabled,
+  modelRows,
+  mergeModelProviders,
+  onMergeModelProvidersChange,
   onSelectModel,
 }: {
   readonly merged: MergedUsage;
@@ -630,6 +640,9 @@ function UsageOverview({
   readonly cursorAccessEnvironments: readonly EnvironmentUsageStatus[];
   readonly showChatGptSharing: boolean;
   readonly onCursorEnabled: () => void;
+  readonly modelRows: readonly ModelRow[];
+  readonly mergeModelProviders: boolean;
+  readonly onMergeModelProvidersChange: (merge: boolean) => void;
   readonly onSelectModel: (key: string) => void;
 }) {
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
@@ -672,9 +685,7 @@ function UsageOverview({
     shownHourly ? merged.hourly : merged.daily
   ).toReversed();
   const breakdownModels =
-    breakdown === "model" && metric === "tokens"
-      ? sortModelsByTokens(merged.models)
-      : merged.models;
+    breakdown === "model" && metric === "tokens" ? sortModelsByTokens(modelRows) : modelRows;
   const breakdownPeak = breakdownModels.reduce(
     (peak, model) => Math.max(peak, metric === "tokens" ? model.totalTokens : model.costUsd),
     0,
@@ -903,26 +914,40 @@ function UsageOverview({
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
-          <ToggleGroup
-            aria-label="Usage breakdown"
-            variant="segmented"
-            value={[breakdown]}
-            onValueChange={(next) => {
-              const value = next[0];
-              if (value === "model" || value === "time") setBreakdown(value);
-            }}
-          >
-            {(
-              [
-                { value: "model", label: "Model" },
-                { value: "time", label: shownHourly ? "Hour" : "Day" },
-              ] as const
-            ).map((option) => (
-              <Toggle key={option.value} value={option.value}>
-                {option.label}
-              </Toggle>
-            ))}
-          </ToggleGroup>
+          <div className="flex items-center gap-2">
+            {breakdown === "model" ? (
+              <ToggleGroup
+                aria-label="Model rows"
+                variant="segmented"
+                value={mergeModelProviders ? ["merge"] : []}
+                onValueChange={(next) => onMergeModelProvidersChange(next.includes("merge"))}
+              >
+                <Toggle value="merge" title="Combine each model's usage across providers">
+                  Merge providers
+                </Toggle>
+              </ToggleGroup>
+            ) : null}
+            <ToggleGroup
+              aria-label="Usage breakdown"
+              variant="segmented"
+              value={[breakdown]}
+              onValueChange={(next) => {
+                const value = next[0];
+                if (value === "model" || value === "time") setBreakdown(value);
+              }}
+            >
+              {(
+                [
+                  { value: "model", label: "Model" },
+                  { value: "time", label: shownHourly ? "Hour" : "Day" },
+                ] as const
+              ).map((option) => (
+                <Toggle key={option.value} value={option.value}>
+                  {option.label}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          </div>
         </div>
 
         {breakdown === "model" ? (
@@ -945,38 +970,56 @@ function UsageOverview({
                 </tr>
               ) : (
                 breakdownModels.map((model, index) => {
-                  const key = `${model.provider}:${model.model}`;
                   const value = metric === "tokens" ? model.totalTokens : model.costUsd;
                   const hasBar = value > 0 && breakdownPeak > 0;
                   const share = modelShare(model, metric === "tokens" ? "tokens" : "cost");
-                  const rowFigures = figureClass(loadingProviders.has(model.provider));
+                  const rowFigures = figureClass(
+                    model.byProvider.some((part) => loadingProviders.has(part.provider)),
+                  );
                   return (
                     <tr
-                      key={key}
+                      key={model.key}
                       className="relative border-b border-border/50 text-right whitespace-nowrap text-muted-foreground tabular-nums transition-colors hover:bg-muted/50 has-focus-visible:bg-muted/50"
                     >
                       <td className="py-2.5 pr-3 text-left text-xs">{index + 1}</td>
                       <td className="py-2.5 text-left whitespace-normal">
                         <button
                           type="button"
-                          onClick={() => onSelectModel(key)}
+                          onClick={() => onSelectModel(model.key)}
                           className={cn(
                             "flex items-center gap-2 text-left text-foreground outline-none after:absolute after:inset-0",
                             !hasBar && "py-1",
                           )}
                         >
-                          <ProviderMark provider={model.provider} className="size-3.5" />
+                          <span className="flex shrink-0 items-center gap-1">
+                            {model.byProvider.map((part) => (
+                              <ProviderMark
+                                key={part.provider}
+                                provider={part.provider}
+                                className="size-3.5"
+                              />
+                            ))}
+                          </span>
                           {model.model}
                         </button>
                         {hasBar ? (
                           <div aria-hidden className={cn("mt-1.5 h-0.5 max-w-48", rowFigures)}>
                             <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `max(0.5rem, ${(value / breakdownPeak) * 100}%)`,
-                                backgroundColor: PROVIDER_PRESENTATION[model.provider].color,
-                              }}
-                            />
+                              className="flex h-full overflow-hidden rounded-full"
+                              style={{ width: `max(0.5rem, ${(value / breakdownPeak) * 100}%)` }}
+                            >
+                              {model.byProvider.map((part) => (
+                                <div
+                                  key={part.provider}
+                                  style={{
+                                    flexGrow:
+                                      (metric === "tokens" ? part.totalTokens : part.costUsd) /
+                                      value,
+                                    backgroundColor: PROVIDER_PRESENTATION[part.provider].color,
+                                  }}
+                                />
+                              ))}
+                            </div>
                           </div>
                         ) : null}
                       </td>
