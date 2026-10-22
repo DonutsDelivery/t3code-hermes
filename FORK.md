@@ -205,24 +205,30 @@ up Hermes's own Hindsight config with no setup. To point it elsewhere or switch 
 
 Syncing is **merge-based, not rebase-based**: this fork's history is public, so rewriting it would
 break every clone. [`.github/workflows/sync-upstream.yml`](./.github/workflows/sync-upstream.yml)
-runs every three hours at :50 (`workflow_dispatch` also works). It merges `upstream/main` onto an
-`automation/sync-upstream/<run>` branch, opens a PR, and enables auto-merge with a merge commit.
-While that PR is open, later runs reuse it instead of merging again.
+runs hourly at :50 (`workflow_dispatch` also works) and follows upstream's nightlies, not its
+`main`. It merges the commit upstream's newest nightly was built from: that commit passed upstream's
+release, while `main` can sit between commits that only work together. The merge goes onto an
+`automation/sync-upstream/<run>` branch, which gets a PR with auto-merge (merge commit) enabled.
+While that PR is open, a newer upstream nightly is merged into it instead of opening another.
 
 GitHub holds CI on a PR opened with `GITHUB_TOKEN` until a maintainer approves the runs, so the
 sync opens its PR through a GitHub App instead. Create a private app on your account with
-**Contents** and **Pull requests** set to read and write and nothing else (no **Workflows**: an
-upstream range that edits `.github/workflows/` still has to be merged by hand), install it on this
+**Contents**, **Pull requests**, and **Workflows** set to read and write, install it on this
 repository, and set the `SYNC_APP_CLIENT_ID` variable and `SYNC_APP_PRIVATE_KEY` secret. Without
-them the sync falls back to `GITHUB_TOKEN`, and each sync PR waits for **Approve workflows to run**.
+them the sync falls back to `GITHUB_TOKEN`, each sync PR waits for **Approve workflows to run**, and
+upstream workflow edits have to be merged by hand. CI's
+[`release-runners`](./.github/scripts/release-runners.test.cjs) check keeps a sync from moving a
+release job onto a runner the fork lacks (upstream uses Blacksmith), which would otherwise queue
+for a day and hold every later nightly behind it. `release.yml` runs the same check first.
 
-Each run also dispatches `release.yml` with `follow_upstream`, passing the upstream history already
-merged into `main`. Under the nightly concurrency lock, the release continues only when that
-history has not shipped in a fork nightly yet. So an upstream change ships on the first sync after
-its PR merges, up to three hours later. Unchanged syncs skip, and a failed release retries on the
-next sync. `release.yml` has no schedule of its own.
+Each run also checks whether upstream history merged into `main` has shipped in a fork nightly
+yet, and if not dispatches `release.yml` with `follow_upstream`, which checks again under the
+nightly concurrency lock. So an upstream nightly reaches a fork nightly about an hour after its
+sync PR merges. A release that fails before publishing is retried by the next run; one that
+published and then failed a later job, like the IPA, counts as shipped. `release.yml` has no
+schedule of its own.
 
-Three kinds of issue come out of it:
+Four kinds of issue come out of it:
 
 - **`upstream-sync-conflict`**: the merge conflicted and was aborted, so `main` is untouched. The
   issue lists the conflicted files (from `git ls-files -u`) and the run fails. Outside this repo,
@@ -230,7 +236,11 @@ Three kinds of issue come out of it:
   worktree, opens a `hermes/upstream-sync-<sha>` PR, merges it (merge commit, never squash) once CI
   is green, and re-dispatches the sync so the release follows. Where upstream now covers something
   the fork built, the resolver takes upstream's version and re-applies only the Hermes behavior it
-  lacks. Until that PR merges, every sync retries the merge and comments on the issue again.
+  lacks. It must merge the commit the issue names, not `upstream/main`. Later runs leave the issue
+  alone until a newer upstream nightly appears, then retry and comment with the new commit.
+- **`upstream-sync-stuck`**: a sync PR has been open for over three hours, so its checks failed or
+  are blocked. Upstream's nightly already passed its own release, so the cause is usually in the
+  fork. Filed once per PR.
 - **`hermes-parity-review`**: advisory, filed once the sync PR is open. It fires when the incoming
   upstream commits touched two or more sibling provider adapters
   (`{provider/Drivers,orchestration-v2/Adapters}/{Claude,Codex,Cursor,Grok,OpenCode}*.ts`), the
@@ -241,11 +251,14 @@ Three kinds of issue come out of it:
 - **`upstream-sync-failed`**: the run failed for any reason other than a conflict, such as a
   rejected push or a `gh` outage.
 
-To sync by hand:
+To sync by hand, merge the commit a conflict issue names, or upstream's newest nightly:
 
 ```bash
 git remote add upstream https://github.com/pingdotgg/t3code
-git fetch upstream && git merge upstream/main
+git fetch upstream
+tag=$(gh release list --repo pingdotgg/t3code --exclude-drafts --json tagName,publishedAt \
+  --jq '[.[] | select(.tagName | test("^v.*-nightly\\."))] | max_by(.publishedAt) | .tagName')
+git merge "$(gh api "repos/pingdotgg/t3code/commits/$tag" --jq .sha)"
 ```
 
 The Hermes driver is additive (new files plus registration lines), so conflicts are usually

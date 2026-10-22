@@ -68,7 +68,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
+
+      # CI runs this on every PR too. Here it covers anything that reached
+      # main without CI: a job asking for a runner the fork lacks would queue
+      # for a day and hold every later nightly behind this run.
+      - name: Check release runners
+        if: github.repository != 'pingdotgg/t3code'
+        run: node --test .github/scripts/release-runners.test.cjs
 
       - id: resolve
         name: Resolve release commit
@@ -1697,7 +1706,13 @@ jobs:
             echo
             jq -r 'to_entries[] | "- \(.key): **\(.value.result)**"' <<< "$RESULTS"
             echo
-            echo "No release was published for this run."
+            if [[ "${{ needs.release.result }}" == "success" ]]; then
+              echo "\`${{ needs.preflight.outputs.tag }}\` was published, but without what the failed jobs above build."
+              echo "Automatic nightlies treat it as shipped and wait for new upstream on \`main\`."
+              echo "To ship a complete build sooner, run Release on \`main\` with the nightly channel."
+            else
+              echo "No release was published for this run."
+            fi
             echo
             echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > "$RUNNER_TEMP/failure.md"
