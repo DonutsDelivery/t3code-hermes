@@ -10,7 +10,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { isModelCostUnknown, mergeUsage, type EnvironmentUsage } from "./usageMerge.ts";
+import { isModelCostUnknown, mergeUsage, modelRows, type EnvironmentUsage } from "./usageMerge.ts";
 
 const decodeSummary = Schema.decodeUnknownSync(UsageSummary);
 
@@ -559,5 +559,60 @@ describe("mergeUsage", () => {
 
     expect(merged.sessions).toBe(1);
     expect(merged.providers[0]?.sessions).toBe(1);
+  });
+});
+
+describe("modelRows", () => {
+  const { models } = mergeUsage(
+    [
+      environment(
+        "env-a",
+        summary(
+          [
+            bucket({ provider: "claude", model: "claude-opus-5-5", costUsd: 30 }),
+            bucket({ provider: "hermes", model: "claude-opus-5-5", costUsd: 20 }),
+            bucket({
+              provider: "hermes",
+              model: "claude-opus-5-5",
+              day: "2026-08-08" as UsageDay,
+              costUsd: 0,
+              costSource: "unpriced",
+              unpricedRecords: 5,
+            }),
+            bucket({ provider: "codex", model: "gpt-6", costUsd: 40 }),
+          ],
+          [
+            { provider: "claude", hostId: "mac", homePath: "/a/.claude" },
+            { provider: "hermes", hostId: "mac", homePath: "/a/.hermes" },
+            { provider: "codex", hostId: "mac", homePath: "/a/.codex" },
+          ],
+        ),
+      ),
+    ],
+    USAGE_CONTRACT_VERSION,
+  );
+
+  it("keeps one row per provider unless merging across providers", () => {
+    expect(modelRows(models, false).map((row) => row.key)).toEqual([
+      "codex:gpt-6",
+      "claude:claude-opus-5-5",
+      "hermes:claude-opus-5-5",
+    ]);
+
+    const merged = modelRows(models, true);
+    expect(merged.map((row) => row.key)).toEqual(["claude-opus-5-5", "gpt-6"]);
+    expect(merged[0]).toMatchObject({
+      costUsd: 50,
+      totalTokens: 3480,
+      tokens: { uncachedInputTokens: 300, cachedInputTokens: 3000, outputTokens: 150 },
+      records: 15,
+      unpricedRecords: 5,
+      unpricedTokens: 1160,
+      costShare: 50 / 90,
+      tokenShare: 3 / 4,
+    });
+    expect(merged[0]?.byProvider.map((part) => part.provider)).toEqual(["claude", "hermes"]);
+    // A priced provider keeps the merged row's cost known.
+    expect(isModelCostUnknown(merged[0]!)).toBe(false);
   });
 });

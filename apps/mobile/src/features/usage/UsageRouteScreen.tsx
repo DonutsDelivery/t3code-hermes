@@ -13,6 +13,7 @@ import {
 import {
   isCompatibleUsageContractVersion,
   isModelCostUnknown,
+  modelRows,
   type DailyTotals,
   type MergedUsage,
 } from "@t3tools/shared/usageMerge";
@@ -40,6 +41,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Chip } from "../../components/ui/Chip";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { AppText as Text } from "../../components/ui/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
@@ -810,30 +812,46 @@ function MetricCell(props: {
 function ModelsSection(props: { readonly merged: MergedUsage; readonly metric: UsageChartMetric }) {
   const { merged, metric } = props;
   const colors = useProviderColors();
+  const [mergeProviders, setMergeProviders] = useState(false);
   if (merged.models.length === 0) return null;
 
-  // .sort() on a copy, not .toSorted(): Hermes doesn't ship the ES2023 method.
-  const ordered = [...merged.models].sort((a, b) =>
+  const ordered = modelRows(merged.models, mergeProviders).sort((a, b) =>
     metric === "cost"
       ? b.costUsd - a.costUsd || b.totalTokens - a.totalTokens
       : b.totalTokens - a.totalTokens || b.costUsd - a.costUsd,
   );
 
   return (
-    <SettingsSection title="By model">
+    <SettingsSection
+      title="By model"
+      trailing={
+        <Chip
+          label="Merge providers"
+          size="small"
+          selected={mergeProviders}
+          accessibilityLabel="Merge each model's usage across providers"
+          onPress={() => setMergeProviders((merge) => !merge)}
+        />
+      }
+    >
       {ordered.map((model, index) => (
         <View
-          key={`${model.provider}:${model.model}`}
+          key={model.key}
           className={
             index === 0
               ? "flex-row items-center gap-3 p-4"
               : "flex-row items-center gap-3 border-t border-border-subtle p-4"
           }
         >
-          <View
-            className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colors[model.provider] }}
-          />
+          <View className="shrink-0 flex-row gap-1">
+            {model.byProvider.map((part) => (
+              <View
+                key={part.provider}
+                className="size-2.5 rounded-full"
+                style={{ backgroundColor: colors[part.provider] }}
+              />
+            ))}
+          </View>
           <View className="min-w-0 flex-1 gap-0.5">
             <Text className="text-base text-foreground" numberOfLines={1}>
               {model.model}

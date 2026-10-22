@@ -42,8 +42,17 @@ export interface ModelTotals {
  * A model whose every record lacked rates has an unknown cost, not a zero one.
  * Clients must not present its `costUsd` as a real dollar figure.
  */
-export function isModelCostUnknown(model: ModelTotals): boolean {
+export function isModelCostUnknown(
+  model: Pick<ModelTotals, "records" | "unpricedRecords">,
+): boolean {
   return model.records > 0 && model.unpricedRecords >= model.records;
+}
+
+/** A model breakdown row: one provider's totals, or one model's totals across providers. */
+export interface ModelRow extends Omit<ModelTotals, "provider"> {
+  /** Unique among the rows of one `modelRows` call. */
+  readonly key: string;
+  readonly byProvider: readonly ModelTotals[];
 }
 
 export interface DailyTotals {
@@ -592,4 +601,49 @@ export function mergeUsage(
     contributingEnvironments,
     contractMismatches,
   };
+}
+
+/**
+ * Model breakdown rows, one per provider and model, or with `acrossProviders` one per model name.
+ * Model aliases apply on the server before bucketing, so two names that still differ stay apart.
+ */
+export function modelRows(models: readonly ModelTotals[], acrossProviders: boolean): ModelRow[] {
+  if (!acrossProviders) {
+    return models.map((model) => ({
+      ...model,
+      key: `${model.provider}:${model.model}`,
+      byProvider: [model],
+    }));
+  }
+  const byModel = new Map<string, ModelTotals[]>();
+  for (const model of models) {
+    const group = byModel.get(model.model);
+    if (group === undefined) byModel.set(model.model, [model]);
+    else group.push(model);
+  }
+  return [...byModel.entries()]
+    .map(([model, byProvider]): ModelRow => {
+      const sum = (pick: (part: ModelTotals) => number) =>
+        byProvider.reduce((total, part) => total + pick(part), 0);
+      return {
+        key: model,
+        model,
+        byProvider,
+        costUsd: sum((part) => part.costUsd),
+        totalTokens: sum((part) => part.totalTokens),
+        tokens: {
+          uncachedInputTokens: sum((part) => part.tokens.uncachedInputTokens),
+          cachedInputTokens: sum((part) => part.tokens.cachedInputTokens),
+          cacheCreationTokens: sum((part) => part.tokens.cacheCreationTokens),
+          outputTokens: sum((part) => part.tokens.outputTokens),
+          reasoningTokens: sum((part) => part.tokens.reasoningTokens),
+        },
+        records: sum((part) => part.records),
+        unpricedRecords: sum((part) => part.unpricedRecords),
+        unpricedTokens: sum((part) => part.unpricedTokens),
+        costShare: sum((part) => part.costShare),
+        tokenShare: sum((part) => part.tokenShare),
+      };
+    })
+    .sort((a, b) => b.costUsd - a.costUsd || b.totalTokens - a.totalTokens);
 }
