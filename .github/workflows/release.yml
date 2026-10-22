@@ -68,7 +68,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
+
+      # CI runs this on every PR too. Here it covers anything that reached
+      # main without CI: a job asking for a runner the fork lacks would queue
+      # for a day and hold every later nightly behind this run.
+      - name: Check release runners
+        if: github.repository != 'pingdotgg/t3code'
+        run: node --test .github/scripts/release-runners.test.cjs
 
       - id: resolve
         name: Resolve release commit
