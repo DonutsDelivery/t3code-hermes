@@ -59,9 +59,12 @@ jobs:
       # onto a runner the fork does not have.
       # Without the app configured, the run falls back to GITHUB_TOKEN, which
       # cannot push workflow edits.
+      # A failed mint fails the job after checkout, because the failure
+      # report below is a local action and needs the checkout to exist.
       - id: app-token
         name: Mint sync app token
         if: vars.SYNC_APP_CLIENT_ID != ''
+        continue-on-error: true
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.SYNC_APP_CLIENT_ID }}
@@ -79,6 +82,12 @@ jobs:
           persist-credentials: true
           # The sync branch push goes out as the app too.
           token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - name: Require sync app token
+        if: steps.app-token.outcome == 'failure'
+        run: |
+          echo "::error::The sync app token could not be minted. If the app's permissions changed, accept them on its installation."
+          exit 1
 
       - name: Configure bot identity
         run: |
@@ -475,6 +484,7 @@ jobs:
         env:
           STATUS: ${{ steps.merge.outputs.status }}
           UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+          TOKEN_OUTCOME: ${{ steps.app-token.outcome }}
         run: |
           set -uo pipefail
 
@@ -484,7 +494,11 @@ jobs:
             echo "- Merge status: \`${STATUS:-(never reached)}\`"
             echo "- Upstream nightly: \`${UPSTREAM_SHA:-(unknown)}\`"
             echo
-            echo "Check the sync PR step for a branch push, PR creation, CI dispatch, or auto-merge failure."
+            if [[ "$TOKEN_OUTCOME" == failure ]]; then
+              echo "The sync app token could not be minted. When the app's permissions change, its installation must accept them before the token can request them."
+            else
+              echo "Check the sync PR step for a branch push, PR creation, CI dispatch, or auto-merge failure."
+            fi
             echo
             echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } > "$RUNNER_TEMP/failure.md"
