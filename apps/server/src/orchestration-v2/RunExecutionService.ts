@@ -1632,7 +1632,10 @@ export const layer: Layer.Layer<
               }),
             ))
           : input.session.startTurn(turnInput);
-        yield* Effect.andThen(shouldStart, startTurn).pipe(
+        yield* Effect.andThen(
+          shouldStart,
+          Effect.andThen(throughputMeter.startRun(throughputRun), startTurn),
+        ).pipe(
           // Wait for acceptance so abandoned startup cannot leave a refresher
           // on the already-detached ingestion fiber.
           Effect.tap(() =>

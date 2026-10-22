@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { orchestrationEnvironment } from "../../state/orchestration";
@@ -53,6 +54,10 @@ export function RunThroughputSection({ threadRef }: { threadRef: ScopedThreadRef
       "Output tokens",
       throughput.outputTokens > 0 ? formatContextWindowTokens(throughput.outputTokens) : "—",
     ],
+    // Only providers that mark their responses report it.
+    ...(throughput.timeToFirstTokenMs === undefined
+      ? []
+      : [["Average time to first token", formatDuration(throughput.timeToFirstTokenMs)] as const]),
   ] as const;
   return (
     <div className="flex flex-col border-t border-border/60 pt-2">

@@ -3268,7 +3268,10 @@ export const OrchestrationV2RunThroughput = Schema.Struct({
   runId: RunId,
   /** Recent tokens per second, else the last rate measured; null before the first. */
   tokensPerSecond: Schema.NullOr(Schema.Number),
-  /** No output for a moment (a tool call, hidden thinking), so the rate is the last one measured. */
+  /**
+   * No output for a moment (a tool call, or hidden thinking from a provider
+   * that does not mark its responses), so the rate is the last one measured.
+   */
   idle: Schema.Boolean,
   /** Output over generation time across the whole run so far; null before it is measurable. */
   averageTokensPerSecond: Schema.NullOr(Schema.Number),
@@ -3276,6 +3279,12 @@ export const OrchestrationV2RunThroughput = Schema.Struct({
   peakTokensPerSecond: Schema.NullOr(Schema.Number),
   /** Output tokens so far: exact where the provider reports them, otherwise estimated. */
   outputTokens: NonNegativeInt,
+  /**
+   * Average wait from each request (the prompt, a tool's result) to its
+   * response's start. Absent before the first, and for providers that do not
+   * mark their responses.
+   */
+  timeToFirstTokenMs: Schema.optionalKey(Schema.Number),
 });
 export type OrchestrationV2RunThroughput = typeof OrchestrationV2RunThroughput.Type;
 
