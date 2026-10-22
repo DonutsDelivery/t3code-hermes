@@ -73,9 +73,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # Install scripts must run: react-native-enriched-markdown's postinstall
+      # downloads RaTeX and the tree-sitter grammars. Without them pod install
+      # fails (the app enables math) and code highlighting compiles out.
       - name: Install dependencies
         run: |
-          pnpm install --frozen-lockfile --ignore-scripts \
+          pnpm install --frozen-lockfile \
             --filter=@t3tools/mobile... \
             --filter=@t3tools/scripts...
 

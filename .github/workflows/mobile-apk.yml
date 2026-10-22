@@ -87,9 +87,12 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
+      # Install scripts must run: react-native-enriched-markdown's postinstall
+      # downloads the tree-sitter grammars, and without them the APK builds
+      # with code highlighting silently compiled out.
       - name: Install dependencies
         run: |
-          pnpm install --frozen-lockfile --ignore-scripts \
+          pnpm install --frozen-lockfile \
             --filter=@t3tools/mobile... \
             --filter=@t3tools/scripts...
 

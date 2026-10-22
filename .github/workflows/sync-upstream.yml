@@ -12,6 +12,10 @@ name: Sync Upstream
 # resolver picks it up from the webhook, merges its resolution PR once CI is
 # green, and dispatches this workflow again to release.
 #
+# A sync PR that fails CI gets newer upstream merged into it on each run, so
+# a breakage upstream fixes clears without anyone touching it. One still open
+# after six hours files an `upstream-sync-stuck` issue.
+#
 # This workflow only ever runs on a fork (see the job guard). It is inert if it
 # is ever merged back upstream.
 
@@ -115,7 +119,7 @@ jobs:
           fi
 
           sync_prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open \
-            --limit 100 --json url,headRefName,author \
+            --limit 100 --json url,headRefName,author,createdAt \
             --jq '[.[] | select(.headRefName | startswith("automation/sync-upstream/")) | select(.author.is_bot)]') \
             || exit 1
           # A sync PR opened before the app was configured never gets CI
@@ -132,7 +136,32 @@ jobs:
           if [[ -n "$pending_pr" ]]; then
             echo "status=pending" >> "$GITHUB_OUTPUT"
             echo "pr_url=$pending_pr" >> "$GITHUB_OUTPUT"
-            echo "Waiting for the existing sync PR: $pending_pr"
+            # CI takes minutes and runs come every three hours, so a sync PR
+            # still open here has almost always failed its checks. One that
+            # outlasts two runs is not clearing by itself and needs a person.
+            created=$(jq -r '.[0].createdAt' <<<"$sync_prs")
+            if (( $(date +%s) - $(date -d "$created" +%s) > 6 * 3600 )); then
+              echo "stuck=true" >> "$GITHUB_OUTPUT"
+            fi
+
+            # The usual failure is upstream main being briefly broken. Merging
+            # newer upstream brings in upstream's own fix; waiting never would.
+            pending_branch=$(jq -r '.[0].headRefName' <<<"$sync_prs")
+            git fetch --no-tags origin "$pending_branch" || exit 1
+            if git merge-base --is-ancestor "$upstream_sha" FETCH_HEAD; then
+              echo "Waiting for the existing sync PR: $pending_pr"
+              exit 0
+            fi
+            git checkout --quiet -B "$pending_branch" FETCH_HEAD || exit 1
+            if ! git merge --no-edit upstream/main; then
+              git merge --abort || true
+              echo "::warning::upstream/main does not merge cleanly into $pending_pr; waiting on it as is."
+              exit 0
+            fi
+            # Rejected like a new sync branch when the range edits workflows.
+            git push origin "HEAD:$pending_branch" || exit 1
+            echo "refreshed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            echo "Merged upstream/main ($upstream_sha) into $pending_pr."
             exit 0
           fi
 
@@ -207,6 +236,7 @@ jobs:
         env:
           STATUS: ${{ steps.merge.outputs.status }}
           PENDING_PR: ${{ steps.merge.outputs.pr_url }}
+          REFRESHED_SHA: ${{ steps.merge.outputs.refreshed_sha }}
           UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
           # Open the PR and enable auto-merge as the app when it is configured.
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
@@ -216,6 +246,10 @@ jobs:
 
           if [[ "$STATUS" == "pending" ]]; then
             pr_url="$PENDING_PR"
+            if [[ -n "$REFRESHED_SHA" ]]; then
+              gh pr edit "$pr_url" --title "chore(sync): merge upstream through ${UPSTREAM_SHA:0:12}" \
+                || echo "::warning::Could not retitle $pr_url."
+            fi
             # Retry a previous CI dispatch/auto-merge setup failure without
             # replacing the PR's head or spawning another PR.
             if [[ $(gh pr view "$pr_url" --json autoMergeRequest --jq '.autoMergeRequest != null') == true ]]; then
@@ -223,7 +257,8 @@ jobs:
               exit 0
             fi
             sync_branch=$(gh pr view "$pr_url" --json headRefName --jq '.headRefName')
-            head_sha=$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid')
+            # The API can still report the old head right after a refresh push.
+            head_sha="${REFRESHED_SHA:-$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid')}"
           else
             sync_branch="automation/sync-upstream/${GITHUB_RUN_ID}"
             head_sha="$(git rev-parse HEAD)"
@@ -247,7 +282,7 @@ jobs:
       # a clean merge from reaching its PR.
       - id: drift
         name: Check sibling adapter drift
-        if: steps.merge.outputs.status == 'ready'
+        if: steps.merge.outputs.status == 'ready' || steps.merge.outputs.refreshed_sha != ''
         shell: bash
         env:
           BEFORE_SHA: ${{ steps.merge.outputs.before }}
@@ -316,7 +351,7 @@ jobs:
           } > "$RUNNER_TEMP/parity-issue.md"
 
       - name: Open Hermes parity review issue
-        if: steps.merge.outputs.status == 'ready' && steps.drift.outputs.review == 'true'
+        if: steps.drift.outputs.review == 'true'
         uses: ./.github/actions/report-automation-failure
         with:
           title: Hermes parity review (${{ github.run_id }})
@@ -324,6 +359,33 @@ jobs:
           label: hermes-parity-review
           label-color: fbca04
           label-description: Upstream changed sibling provider adapters; check the Hermes copy.
+          github-token: ${{ github.token }}
+
+      - name: Compose stuck sync PR report
+        if: steps.merge.outputs.stuck == 'true'
+        shell: bash
+        env:
+          PR_URL: ${{ steps.merge.outputs.pr_url }}
+        run: |
+          {
+            echo "Sync PR $PR_URL has been open for over six hours, so \`main\` and fork nightlies are behind upstream."
+            echo "Release runs skip until it merges: they only ship upstream history that is on \`main\`."
+            echo
+            echo "Each sync run merges newer upstream into it when that merges cleanly (the run log warns when it"
+            echo "does not), so this is not a breakage upstream has since fixed. Fix its checks on the sync branch,"
+            echo "and close this issue once it merges."
+            echo
+            echo "[Run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          } > "$RUNNER_TEMP/stuck.md"
+
+      - name: Report stuck sync PR
+        if: steps.merge.outputs.stuck == 'true'
+        uses: ./.github/actions/report-automation-failure
+        with:
+          title: Upstream sync PR stuck (${{ github.run_id }})
+          body-file: ${{ runner.temp }}/stuck.md
+          label: upstream-sync-stuck
+          label-description: An upstream sync PR has not merged for over six hours.
           github-token: ${{ github.token }}
 
       - name: Summarize
