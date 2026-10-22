@@ -401,9 +401,13 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       if (state.fiber !== null) return { ...state, count: state.count + 1 };
       yield* pollMutex.withPermits(1)(Ref.set(ledgerRef, null));
-      const fiber = yield* poll.pipe(
-        Effect.ignore,
-        Effect.repeat(Schedule.spaced(SUBSCRIBED_POLL_INTERVAL)),
+      // The first read runs before subscribing returns. Forked, it could straddle a
+      // concurrent Hermes write (jobs.json read before executions.db) and publish a torn snapshot.
+      yield* Effect.ignore(poll);
+      const fiber = yield* Effect.sleep(SUBSCRIBED_POLL_INTERVAL).pipe(
+        Effect.andThen(
+          poll.pipe(Effect.ignore, Effect.repeat(Schedule.spaced(SUBSCRIBED_POLL_INTERVAL))),
+        ),
         Effect.asVoid,
         Effect.forkIn(pollerScope),
       );
