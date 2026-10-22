@@ -245,8 +245,12 @@ jobs:
 
           conflicts="$(cat "$RUNNER_TEMP/conflicts.txt")"
 
+          # The Hermes resolver's webhook script parses this body: it needs
+          # "Merging `upstream/main` (`<sha>`)", the run URL, and the file list
+          # between "Conflicted files:" and "Resolve by hand:". Keep them.
           {
-            echo "Merging upstream nightly \`$TAG\` (\`$UPSTREAM_SHA\`) into \`main\` conflicted."
+            echo "Merging \`upstream/main\` (\`$UPSTREAM_SHA\`) into \`main\` conflicted."
+            echo "That is the commit upstream nightly \`$TAG\` was built from."
             echo "The merge was aborted; \`main\` is unchanged."
             echo
             echo "Conflicted files:"
@@ -257,7 +261,9 @@ jobs:
               echo "- (none recorded — the merge failed for some other reason; see the run log)"
             fi
             echo
-            echo "Resolve by merging exactly that commit, not \`upstream/main\`: the fork follows upstream's nightlies."
+            echo "Resolve by hand:"
+            echo
+            echo "Merge exactly that commit, not the latest \`upstream/main\`: the fork follows upstream's nightlies."
             echo
             echo '```bash'
             echo "git fetch upstream && git merge $UPSTREAM_SHA"
