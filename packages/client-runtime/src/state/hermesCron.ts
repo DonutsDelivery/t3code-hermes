@@ -173,7 +173,7 @@ export function describeHermesCronEmptyState(
       return {
         title: "No scheduled tasks",
         description:
-          'Tasks are created by asking Hermes in chat — try "every morning at 9, summarise my open PRs".',
+          'Tasks are created by asking Hermes in chat. Try "every morning at 9, summarise my open PRs".',
       };
   }
 }

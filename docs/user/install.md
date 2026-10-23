@@ -42,8 +42,8 @@ To return freed database space to disk, run `npx t3-hermes@nightly doctor`
 The executable is built for Apple Silicon Macs, Linux, and Windows. There is
 no Intel Mac build of it, because Node cannot produce a single executable for
 that platform; the Intel desktop app is unaffected. To run a standalone server
-on an Intel Mac, build it from source. You need Node.js 24 and `vp` (see
-[Install vp](https://github.com/pingdotgg/t3code#install-vp)):
+on an Intel Mac, build it from source with `vp`, which provides the Node
+version it needs ([Install vp](https://github.com/pingdotgg/t3code#install-vp)):
 
 ```bash
 git clone https://github.com/NateWeav/t3code-hermes

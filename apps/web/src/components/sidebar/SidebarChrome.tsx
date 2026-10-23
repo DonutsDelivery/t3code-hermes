@@ -242,7 +242,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {hermesAvailable ? (
             <SidebarUtilityItem
               icon={<HermesGlyphIcon />}
-              label={hermesUnread ? "Hermes — a task finished" : "Hermes"}
+              label={hermesUnread ? "Hermes: a task finished" : "Hermes"}
               onClick={handleHermesClick}
               unread={hermesUnread}
             />
