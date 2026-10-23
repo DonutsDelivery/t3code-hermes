@@ -310,7 +310,7 @@ function HermesTasksScreen({ environmentId }: { readonly environmentId: Environm
             }}
           />
           <Text className="px-1 text-sm text-foreground-muted">
-            Tasks are written by Hermes itself — describe the schedule you want in chat.
+            Tasks are written by Hermes itself. Describe the schedule you want in chat.
           </Text>
         </View>
       }

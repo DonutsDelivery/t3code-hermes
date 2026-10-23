@@ -244,7 +244,7 @@ function MemoryFileCard({
                 {hermesMemoryChars([normalizeHermesMemoryEntry(editor.content)]).toLocaleString()}{" "}
                 characters in entry · After saving: {draftUsage?.toLocaleString()} of{" "}
                 {draftLimit.toLocaleString()} characters.
-                {overLimit ? " Over limit — shorten this entry before saving." : ""}
+                {overLimit ? " Over limit. Shorten this entry before saving." : ""}
               </p>
             </>
           )}

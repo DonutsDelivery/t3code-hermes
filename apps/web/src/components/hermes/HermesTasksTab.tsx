@@ -246,7 +246,7 @@ export function HermesTasksTab({
           New task…
         </Button>
         <p className="mt-1 text-xs text-muted-foreground">
-          Tasks are written by Hermes itself — describe the schedule you want in chat.
+          Tasks are written by Hermes itself. Describe the schedule you want in chat.
         </p>
       </div>
     </div>

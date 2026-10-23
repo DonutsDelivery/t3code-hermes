@@ -20,7 +20,7 @@ function useRunThroughput(threadRef: ScopedThreadRef) {
 }
 
 function formatTokensPerSecond(tokensPerSecond: number | null): string {
-  return tokensPerSecond === null ? "— tok/s" : `${Math.round(tokensPerSecond)} tok/s`;
+  return tokensPerSecond === null ? "- tok/s" : `${Math.round(tokensPerSecond)} tok/s`;
 }
 
 /** Composer footer chip beside the context ring; dims while the model is in a tool call. */
@@ -52,7 +52,7 @@ export function RunThroughputSection({ threadRef }: { threadRef: ScopedThreadRef
     ["Peak", formatRate(throughput.peakTokensPerSecond)],
     [
       "Output tokens",
-      throughput.outputTokens > 0 ? formatContextWindowTokens(throughput.outputTokens) : "—",
+      throughput.outputTokens > 0 ? formatContextWindowTokens(throughput.outputTokens) : "-",
     ],
     // Only providers that mark their responses report it.
     ...(throughput.timeToFirstTokenMs === undefined
@@ -111,7 +111,7 @@ export function RunThroughputSection({ threadRef }: { threadRef: ScopedThreadRef
 }
 
 function formatRate(tokensPerSecond: number | null): string {
-  return tokensPerSecond === null ? "—" : formatTokensPerSecond(tokensPerSecond);
+  return tokensPerSecond === null ? "-" : formatTokensPerSecond(tokensPerSecond);
 }
 
 /** The run's rates spread across the chart's width, oldest at the left; null before two exist. */
