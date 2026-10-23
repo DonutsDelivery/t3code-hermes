@@ -392,7 +392,18 @@ jobs:
       # and none of its tests touch the runtime. Only the non-server `test`
       # job, which covers @t3tools/desktop, needs the download.
       - name: Install Chromium for server browser integration tests
-        run: node apps/server/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+        run: node apps/server/node_modules/playwright-core/cli.js install --only-shell chromium
+
+      # As in ci.yml: `--with-deps` always installs fonts through apt, and a
+      # slow Ubuntu mirror then runs a shard past its timeout. The runner image
+      # usually has every library already.
+      - name: Install missing Chromium system dependencies
+        run: |
+          browser=$(find "$HOME/.cache/ms-playwright" -name chrome-headless-shell -type f -print -quit)
+          test -n "$browser"
+          if ldd "$browser" | grep '=> not found'; then
+            node apps/server/node_modules/playwright-core/cli.js install-deps chromium
+          fi
 
       - name: Test
         run: vp run --filter t3-hermes test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -1656,6 +1667,10 @@ jobs:
         resolve_commit,
         preflight,
         relay_public_config,
+        quality,
+        test,
+        test_web,
+        test_server,
         build_bundle,
         desktop_mac_arm64,
         desktop_mac_x64,
@@ -1673,7 +1688,10 @@ jobs:
         finalize,
         announce_discord,
       ]
-    if: ${{ always() && github.repository != 'pingdotgg/t3code' && contains(needs.*.result, 'failure') }}
+    # A job that hits its timeout ends `cancelled`, not `failure`. The release
+    # group queues runs instead of cancelling them, so short of a manual cancel
+    # that is the only way a job ends cancelled.
+    if: ${{ always() && github.repository != 'pingdotgg/t3code' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
