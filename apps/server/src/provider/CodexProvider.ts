@@ -792,12 +792,16 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     ? { status: "ready" as const, auth: managedAuth, message: undefined }
     : accountProbeStatus(snapshot);
   const usageLimits =
-    !snapshot.account.account || snapshot.account.account.type === "apiKey"
+    snapshot.account.account?.type === "apiKey" ||
+    // A custom model provider (no account, no OpenAI auth) has no usage to read;
+    // a missing OpenAI sign-in stays a probe failure so its guidance shows.
+    (!snapshot.account.account && !snapshot.account.requiresOpenaiAuth)
       ? makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" })
       : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
         ? makeUnavailableUsageLimits({
             checkedAt,
             reason: "probeFailed",
+            ...(accountStatus.message ? { message: accountStatus.message } : {}),
             ...(snapshot.rateLimits ? { message: snapshot.rateLimits.failure } : {}),
           })
         : codexRateLimitsToLimits({
