@@ -35,7 +35,6 @@ import {
   HermesRunError,
   hermesRunIdPrefix,
   ProjectId,
-  pullRequestHostOf,
   ProviderDriverKind,
   ThreadId,
   type ThreadHermesRun,
@@ -47,10 +46,7 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2TurnItem,
   type ProviderInstanceId,
-  type SourceControlProviderKind,
 } from "@t3tools/contracts";
-import { parseChangeRequestUrl } from "@t3tools/shared/changeRequestUrl";
-import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -76,6 +72,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import { resolveEnabledHermesInstance, resolveHermesHome } from "./hermesCronState.ts";
 import {
   DEFAULT_HERMES_PROFILE,
@@ -201,7 +198,9 @@ function suggestProject(
   const text = hint.text.toLowerCase();
   if (!text.trim()) return null;
   const byRepository = projects.find((project) => {
-    const repository = sourceControlRepositorySelector(project.repositoryIdentity)?.toLowerCase();
+    const repository = sourceControlDefinitions
+      .repositorySelector(project.repositoryIdentity)
+      ?.toLowerCase();
     return (
       (repository !== undefined && repository.includes("/") && text.includes(repository)) ||
       text.includes(project.workspaceRoot.toLowerCase())
@@ -565,11 +564,11 @@ const make = Effect.gen(function* () {
       (url) =>
         Effect.gen(function* () {
           if (run.pullRequestUrls.has(url)) return;
-          const parsed = parseChangeRequestUrl(url);
+          const parsed = sourceControlDefinitions.parseChangeRequestUrl(url)?.link ?? null;
           const identity = project.repositoryIdentity;
-          const repository = sourceControlRepositorySelector(identity);
+          const repository = sourceControlDefinitions.repositorySelector(identity);
           const host = identity?.provider
-            ? pullRequestHostOf(identity, identity.provider as SourceControlProviderKind)
+            ? sourceControlDefinitions.changeRequestHost(identity, identity.provider)
             : null;
           // Only the project's own repository, on its own host: a run mentions
           // upstream PRs too.
