@@ -1,4 +1,4 @@
-import { applyThreadPullRequestLinkUpdate } from "@t3tools/shared/threadPullRequests";
+import { applyThreadPullRequestLinkUpdate } from "../sourceControl/threadPullRequests.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 import * as Stream from "effect/Stream";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
@@ -14,7 +14,7 @@ import {
   threadErrorSummary,
   usageLimitRunPresentedAsLatest,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
+import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import type {
   OrchestrationV2AppThread,
   OrchestrationV2Checkpoint,
@@ -1684,6 +1684,7 @@ export function threadShellFromProjection(
     pinOrderKey: projection.thread.pinOrderKey ?? null,
     lastVisitedAt: projection.thread.lastVisitedAt,
     ...(projection.thread.hermesRun == null ? {} : { hermesRun: projection.thread.hermesRun }),
+    opens: projection.thread.opens ?? null,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
     deletedAt: projection.thread.deletedAt,
@@ -1928,6 +1929,7 @@ function shellFromState(input: {
     pinOrderKey: input.state.thread.pinOrderKey ?? null,
     lastVisitedAt: input.state.thread.lastVisitedAt,
     ...(input.state.thread.hermesRun == null ? {} : { hermesRun: input.state.thread.hermesRun }),
+    opens: input.state.thread.opens ?? null,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,
     deletedAt: input.state.thread.deletedAt,
