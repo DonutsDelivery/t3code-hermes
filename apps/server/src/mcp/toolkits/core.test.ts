@@ -38,6 +38,7 @@ import * as ServerConfig from "../../config.ts";
 import * as ProviderAdapterRegistry from "../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as HermesChatService from "../../hermes/HermesChatService.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
 import * as PreviewBrowser from "../../preview/PreviewBrowser.ts";
@@ -572,6 +573,46 @@ it.effect("a read-only client reads threads and is refused every write before it
   ),
 );
 const dispatched: Array<string> = [];
+
+it.effect("a read-only client lists and reads Hermes gateway conversations", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const call = (name: string, args: Record<string, unknown>) =>
+      server
+        .callTool({ name, arguments: args })
+        .pipe(
+          Effect.provideService(
+            McpInvocationContext.McpInvocationContext,
+            clientScope("read-only"),
+          ),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    const listed = yield* call("hermes_chat_list", { limit: 5 });
+    expect(listed.isError).toBe(false);
+    expect(listed.structuredContent).toEqual({ availability: "hermes-off", conversations: [] });
+    const read = yield* call("hermes_chat_read", { sessionKey: "agent:main:discord:dm:1" });
+    expect(read.isError).toBe(false);
+    expect(read.structuredContent).toMatchObject({ availability: "ready", truncated: true });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerHermesChatToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(
+          Layer.mock(HermesChatService.HermesChatService)({
+            list: () => Effect.succeed({ availability: "hermes-off", conversations: [] }),
+            transcript: () =>
+              Effect.succeed({
+                availability: "ready",
+                conversation: null,
+                messages: [],
+                truncated: true,
+              }),
+          }),
+        ),
+      ),
+    ),
+  ),
+);
 
 it.effect("refuses act-as-caller tools to a client caller", () =>
   Effect.gen(function* () {

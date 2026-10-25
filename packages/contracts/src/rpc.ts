@@ -359,6 +359,12 @@ import {
   HermesRunSourcesResult,
 } from "./hermesRuns.ts";
 import {
+  HermesChatListInput,
+  HermesChatListResult,
+  HermesChatTranscript,
+  HermesChatTranscriptInput,
+} from "./hermesChat.ts";
+import {
   HermesGatewayRestartInput,
   HermesPatchChangeInput,
   HermesPatchError,
@@ -578,6 +584,8 @@ export const WS_METHODS = {
   hermesCronSetMuted: "hermes.cronSetMuted",
   hermesRunSourcesList: "hermes.runSourcesList",
   hermesRunSourceSet: "hermes.runSourceSet",
+  hermesChatList: "hermes.chatList",
+  hermesChatTranscript: "hermes.chatTranscript",
   hermesPatchList: "hermes.patchList",
   hermesPatchApply: "hermes.patchApply",
   hermesPatchRevert: "hermes.patchRevert",
@@ -1056,6 +1064,20 @@ const WsHermesRunSourceSetRpc = Rpc.make(WS_METHODS.hermesRunSourceSet, {
   payload: HermesRunSourceSetInput,
   success: HermesRunSourcesResult,
   error: Schema.Union([EnvironmentAuthorizationError, HermesRunError]),
+});
+
+/** Recent Hermes gateway conversations. Never fails for a missing or locked session store. */
+const WsHermesChatListRpc = Rpc.make(WS_METHODS.hermesChatList, {
+  payload: HermesChatListInput,
+  success: HermesChatListResult,
+  error: EnvironmentAuthorizationError,
+});
+
+/** One gateway conversation across every Hermes session under its key, read on demand. */
+const WsHermesChatTranscriptRpc = Rpc.make(WS_METHODS.hermesChatTranscript, {
+  payload: HermesChatTranscriptInput,
+  success: HermesChatTranscript,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsHermesPatchListRpc = Rpc.make(WS_METHODS.hermesPatchList, {
@@ -2167,6 +2189,8 @@ export const HermesWsRpcGroup = RpcGroup.make(
   WsHermesCronSetMutedRpc,
   WsHermesRunSourcesListRpc,
   WsHermesRunSourceSetRpc,
+  WsHermesChatListRpc,
+  WsHermesChatTranscriptRpc,
   WsHermesPatchListRpc,
   WsHermesPatchApplyRpc,
   WsHermesPatchRevertRpc,

@@ -97,6 +97,12 @@ it("keeps the Hermes skill library and on-demand content read-only", () => {
   }
 });
 
+it("keeps Hermes gateway conversations read-only", () => {
+  for (const method of [WS_METHODS.hermesChatList, WS_METHODS.hermesChatTranscript]) {
+    expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+  }
+});
+
 it("allows Hermes memory reads but requires operate permission for edits", () => {
   expect(requiredScopeForRpcMethod(WS_METHODS.hermesMemoryRead)).toBe(AuthOrchestrationReadScope);
   expect(requiredScopeForRpcMethod(WS_METHODS.subscribeHermesMemory)).toBe(

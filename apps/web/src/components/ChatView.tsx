@@ -167,6 +167,7 @@ import {
 import { threadPullRequestPanelTarget } from "./pullRequest/pullRequestDetail.logic";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { useDeviceState } from "~/state/device";
+import { useHermesEnvironmentEnabled } from "~/state/hermesCron";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -1908,6 +1909,7 @@ export default function ChatView(props: ChatViewProps) {
   const pullRequestsSurfaceAvailable =
     isServerThread && supportsThreadPullRequests && visiblePullRequestCount > 0;
   const paperclipSurfaceAvailable = isServerThread && settings.integrations.paperclip.enabled;
+  const hermesChatSurfaceAvailable = useHermesEnvironmentEnabled(environmentId) && isServerThread;
   const { state: deviceState, loaded: deviceStateLoaded } = useDeviceState(
     activeThreadRef?.environmentId ?? null,
   );
@@ -2407,6 +2409,7 @@ export default function ChatView(props: ChatViewProps) {
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
     addPaperclipSurfaceStable,
+    addHermesChatSurfaceStable,
     closePreviewPanelStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,
@@ -2439,6 +2442,7 @@ export default function ChatView(props: ChatViewProps) {
     supportsPullRequests,
     pullRequestsSurfaceAvailable,
     paperclipSurfaceAvailable,
+    hermesChatSurfaceAvailable,
     gitCwd,
     activeProjectCwd,
     explicitDiffOpenRef,
@@ -3914,6 +3918,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurfaceStable}
           onAddPullRequests={addPullRequestsSurfaceStable}
           onAddPaperclip={addPaperclipSurfaceStable}
+          onAddHermesChat={addHermesChatSurfaceStable}
           onAddDevice={addDeviceSurfaceStable}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
@@ -3922,6 +3927,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           paperclipAvailable={paperclipSurfaceAvailable}
+          hermesChatAvailable={hermesChatSurfaceAvailable}
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}

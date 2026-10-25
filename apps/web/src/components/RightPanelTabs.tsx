@@ -33,6 +33,7 @@ import {
   FileDiff,
   Files,
   Globe2,
+  MessagesSquare,
   Paperclip,
   Plus,
   TerminalSquare,
@@ -138,6 +139,7 @@ export interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddPaperclip: () => void;
+  onAddHermesChat: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -146,6 +148,7 @@ export interface RightPanelTabsProps {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   paperclipAvailable: boolean;
+  hermesChatAvailable: boolean;
   deviceAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
@@ -173,6 +176,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   paperclip: "Turn on Paperclip in Settings → Integrations.",
+  hermesChat: "Turn on the Hermes provider in Settings to see its conversations.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -198,6 +202,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   paperclip: "Turn on Paperclip in Settings.",
+  hermesChat: "Turn on Hermes in Settings.",
   device: "Available from a thread.",
 } as const;
 
@@ -320,6 +325,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddPaperclip: () => void;
+  onAddHermesChat: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -328,6 +334,7 @@ function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   paperclipAvailable: boolean;
+  hermesChatAvailable: boolean;
   deviceAvailable: boolean;
 }) {
   const [highlight, setHighlight] = useState(-1);
@@ -389,6 +396,15 @@ function RightPanelEmptyState(props: {
       available: props.paperclipAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.paperclip,
       onClick: props.onAddPaperclip,
+    },
+    {
+      label: "Hermes conversation",
+      description: "Read a Discord or other gateway chat Hermes is in.",
+      icon: MessagesSquare,
+      shortcut: "H",
+      available: props.hermesChatAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.hermesChat,
+      onClick: props.onAddHermesChat,
     },
     {
       label: "Device",
@@ -583,6 +599,10 @@ function surfaceTitle(
       return "Pull requests";
     case "paperclip":
       return "Paperclip";
+    case "hermes-chat":
+      return surface.sessionKey === null
+        ? "Hermes conversations"
+        : (surface.title ?? "Hermes chat");
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -675,6 +695,8 @@ function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "paperclip":
       return <Paperclip className="size-3 shrink-0" />;
+    case "hermes-chat":
+      return <MessagesSquare className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1105,6 +1127,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddPaperclip,
     },
     {
+      label: "Hermes conversation",
+      icon: MessagesSquare,
+      shortcut: "H",
+      available: props.hermesChatAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.hermesChat,
+      onClick: props.onAddHermesChat,
+    },
+    {
       label: "Device",
       icon: Smartphone,
       shortcut: "M",
@@ -1485,6 +1515,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddPaperclip={props.onAddPaperclip}
+            onAddHermesChat={props.onAddHermesChat}
             onAddDevice={props.onAddDevice}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
@@ -1493,6 +1524,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             paperclipAvailable={props.paperclipAvailable}
+            hermesChatAvailable={props.hermesChatAvailable}
             deviceAvailable={props.deviceAvailable}
           />
         ) : (

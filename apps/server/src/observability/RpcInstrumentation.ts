@@ -91,6 +91,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.hermesCronSetMuted]: "server",
   [WS_METHODS.hermesRunSourcesList]: "server",
   [WS_METHODS.hermesRunSourceSet]: "server",
+  [WS_METHODS.hermesChatList]: "server",
+  [WS_METHODS.hermesChatTranscript]: "server",
   [WS_METHODS.hermesPatchList]: "server",
   [WS_METHODS.hermesPatchApply]: "server",
   [WS_METHODS.hermesPatchRevert]: "server",

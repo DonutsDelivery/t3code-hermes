@@ -1,0 +1,34 @@
+# Read Hermes conversations
+
+When Hermes runs its messaging gateway, it also talks to people on Discord (and Telegram, Slack,
+and the other platforms it supports) outside any T3 Code thread. The **Hermes conversation**
+surface shows one of those chats in the right panel, so you can follow along without leaving the
+app.
+
+It is read-only. You cannot reply from T3 Code, and opening a conversation never starts a Hermes
+turn; to answer, use the platform itself.
+
+## Open a conversation
+
+From a thread, open the right panel's **Open a surface** list and choose **Hermes conversation**
+(shortcut `H`), or run **Open Hermes conversation…** from the command palette. Both open a list of
+the chats Hermes was active in over the last 30 days, newest first. Choose one to read it; the
+switch button in its header takes you back to the list. Each conversation gets its own tab, so you
+can keep several open.
+
+The surface needs the Hermes provider turned on in Settings, and reads the default Hermes
+profile.
+
+## What it shows
+
+- The whole conversation, even after Hermes reset it or compressed its context and carried on in a
+  new session. A divider marks where each new session starts. Very long conversations show the
+  newest 500 messages.
+- Messages as people wrote them, without the reply quotes and channel history Hermes adds for the
+  model. A reply shows the message it answers above it.
+- Hermes's tool use as one collapsed line per run of steps. Select it to see each step.
+
+While the surface is open and the window is visible, it checks for new messages every few
+seconds. Transcripts are read from Hermes when you look at them and are not saved in T3 Code.
+
+Agents can read the same conversations with the `hermes_chat_list` and `hermes_chat_read` tools.

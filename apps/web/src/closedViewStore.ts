@@ -65,6 +65,11 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
     case "pull-requests":
     case "paperclip":
       return surface.id === surface.kind;
+    case "hermes-chat":
+      return (
+        (surface.sessionKey === null || typeof surface.sessionKey === "string") &&
+        (surface.title === undefined || typeof surface.title === "string")
+      );
     case "preview":
       return surface.resourceId === null || typeof surface.resourceId === "string";
     case "file":

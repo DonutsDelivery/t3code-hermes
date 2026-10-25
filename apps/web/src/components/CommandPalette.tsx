@@ -59,6 +59,7 @@ import {
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
+  MessagesSquareIcon,
   PaletteIcon,
   RotateCcwIcon,
   SettingsIcon,
@@ -139,6 +140,7 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../rightPanelStore";
+import { useHermesEnvironmentEnabled } from "../state/hermesCron";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import {
   cn,
@@ -570,6 +572,9 @@ function OpenCommandPaletteDialog(props: {
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const activeThreadServerConfig = useServerConfigs().get(
+    activeThread?.environmentId ?? ("" as EnvironmentId),
+  );
+  const activeThreadHermesEnabled = useHermesEnvironmentEnabled(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -1409,6 +1414,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <PaperclipIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         useRightPanelStore.getState().open(threadRef, "paperclip");
+      },
+    });
+  }
+
+  if (activeThread !== null && activeThreadHermesEnabled) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:open-hermes-chat",
+      searchTerms: ["hermes", "discord", "conversation", "chat", "gateway", "telegram", "slack"],
+      title: "Open Hermes conversation…",
+      icon: <MessagesSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().openHermesChat(threadRef, null);
       },
     });
   }

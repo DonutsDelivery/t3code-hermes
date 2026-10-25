@@ -234,6 +234,7 @@ import * as HermesCronService from "./hermes/HermesCronService.ts";
 import * as HermesSkillsService from "./hermes/HermesSkillsService.ts";
 import * as HermesMemoryService from "./hermes/HermesMemoryService.ts";
 import * as HermesRunService from "./hermes/HermesRunService.ts";
+import * as HermesChatService from "./hermes/HermesChatService.ts";
 import * as HermesPatchService from "./hermes/HermesPatchService.ts";
 import * as HindsightAgentMemory from "./integrations/hindsight/HindsightAgentMemory.ts";
 import * as HindsightService from "./integrations/hindsight/HindsightService.ts";
@@ -3219,6 +3220,7 @@ const layerHermesWsRpc = HermesServerWsRpcGroup.toLayer(
     const hermesSkills = yield* HermesSkillsService.HermesSkillsService;
     const hermesMemory = yield* HermesMemoryService.HermesMemoryService;
     const hermesRuns = yield* HermesRunService.HermesRunService;
+    const hermesChat = yield* HermesChatService.HermesChatService;
     const hermesPatches = yield* HermesPatchService.HermesPatchService;
     const hindsight = yield* HindsightService.HindsightService;
     const hindsightAgentMemory = yield* HindsightAgentMemory.HindsightAgentMemory;
@@ -3240,6 +3242,8 @@ const layerHermesWsRpc = HermesServerWsRpcGroup.toLayer(
       [WS_METHODS.hermesCronSetMuted]: (input) => hermesCron.setMuted(input),
       [WS_METHODS.hermesRunSourcesList]: (_input) => hermesRuns.listSources,
       [WS_METHODS.hermesRunSourceSet]: (input) => hermesRuns.setSource(input),
+      [WS_METHODS.hermesChatList]: (input) => hermesChat.list(input),
+      [WS_METHODS.hermesChatTranscript]: (input) => hermesChat.transcript(input),
       [WS_METHODS.hermesPatchList]: () => hermesPatches.list,
       [WS_METHODS.hermesPatchApply]: (input) => hermesPatches.apply(input),
       [WS_METHODS.hermesPatchRevert]: (input) => hermesPatches.revert(input),

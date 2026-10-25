@@ -134,6 +134,9 @@ export async function reopenClosedView(
     case "pull-request":
       panels.openPullRequest(ref, surface);
       break;
+    case "hermes-chat":
+      panels.openHermesChat(ref, surface.sessionKey, surface.title);
+      break;
     default:
       panels.open(ref, surface.kind);
   }

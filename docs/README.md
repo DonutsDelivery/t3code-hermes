@@ -21,6 +21,7 @@
 - [Browse Hermes memories](./user/hermes-memory.md)
 - [See your Paperclip company](./user/paperclip.md)
 - [Browse Hermes skills](./user/hermes-skills.md)
+- [Read Hermes conversations](./user/hermes-conversations.md)
 - [Configure Hermes reasoning](./user/hermes-reasoning.md)
 - [Use fast mode with Hermes](./user/hermes-fast-mode.md)
 - [Keep Hermes patches in place](./user/hermes-patches.md)

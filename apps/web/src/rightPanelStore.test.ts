@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { useClosedViewStore } from "./closedViewStore";
 import { reopenClosedView } from "./reopenClosedView";
 import {
+  hermesChatSurface,
   migratePersistedRightPanelState,
   pullRequestSurface,
   pullRequestSurfaceId,
@@ -39,6 +40,58 @@ async function reloadRightPanelStore() {
 }
 
 describe("rightPanelStore", () => {
+  it("replaces the Hermes picker with the chosen conversation and reopens it after a close", async () => {
+    const store = useRightPanelStore.getState();
+    const key = "agent:main:discord:thread:1:1";
+    store.openHermesChat(refA, null);
+    store.open(refA, "diff");
+    store.activateSurface(refA, "hermes-chat");
+    store.openHermesChat(refA, key, "fix my lag");
+    const chosen = hermesChatSurface(key, "fix my lag");
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({
+      activeSurfaceId: chosen.id,
+      surfaces: [chosen, { id: "diff" }],
+    });
+
+    // A second conversation opens beside the first rather than replacing it.
+    store.openHermesChat(refA, null);
+    store.openHermesChat(refA, key);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces.map(
+        (surface) => surface.id,
+      ),
+    ).toEqual([chosen.id, "diff"]);
+
+    store.closeSurface(refA, chosen.id);
+    const [closed] = useClosedViewStore.getState().entries;
+    expect(closed?.kind === "panel-tab" && closed.surface).toEqual(chosen);
+    await reopenClosedView(closed!, {
+      openPreview: (() => undefined) as never,
+      workspaceAvailable: false,
+    });
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual(
+      chosen,
+    );
+  });
+
+  it("drops a persisted Hermes conversation tab whose key is malformed", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        a: {
+          isOpen: true,
+          activeSurfaceId: "hermes-chat:x",
+          surfaces: [
+            { id: "hermes-chat:x", kind: "hermes-chat", sessionKey: 7 },
+            { id: "stale-id", kind: "hermes-chat", sessionKey: "k", title: "Chat" },
+          ],
+        },
+      },
+    });
+    expect(migrated.byThreadKey["a"]?.surfaces).toEqual([hermesChatSurface("k", "Chat")]);
+  });
+
   it("records single and bulk tab closes, newest first", () => {
     const store = useRightPanelStore.getState();
     const pr = pullRequestSurface({

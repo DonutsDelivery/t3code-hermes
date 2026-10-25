@@ -1252,6 +1252,20 @@ export function createServerEnvironmentAtoms<R, E>(
      * when it opens and when the user refreshes. Briefly cached so switching
      * tabs back to it does not refetch.
      */
+    /**
+     * Hermes gateway conversations, read on demand: Hermes's session store has
+     * no change feed this server listens to, so the open surface polls.
+     */
+    hermesChatList: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:hermes-chat-list",
+      tag: WS_METHODS.hermesChatList,
+      staleTimeMs: 5_000,
+    }),
+    hermesChatTranscript: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:hermes-chat-transcript",
+      tag: WS_METHODS.hermesChatTranscript,
+      staleTimeMs: 2_000,
+    }),
     paperclipOverview: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:paperclip-overview",
       tag: WS_METHODS.paperclipOverview,

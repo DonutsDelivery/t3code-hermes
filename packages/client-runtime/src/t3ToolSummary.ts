@@ -339,6 +339,16 @@ export function summarizeT3ToolCalls(
     case "paperclip-connect":
       label = phrase("Connected", "connect", `Paperclip ${times}`);
       break;
+    case "hermes-chat-list":
+      label = phrase("Listed", "list", `Hermes conversations ${times}`);
+      break;
+    case "hermes-chat-read":
+      label = phrase(
+        "Read",
+        "read",
+        quantity(countEntities(entityIds("sessionKey")), "Hermes conversation"),
+      );
+      break;
     case "attachment-prepare":
       label = phrase(
         "Prepared",

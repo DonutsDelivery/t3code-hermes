@@ -44,6 +44,8 @@ import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { PaperclipToolkit } from "./toolkits/paperclip/tools.ts";
 import * as PaperclipHandlers from "./toolkits/paperclip/handlers.ts";
+import { HermesChatToolkit } from "./toolkits/hermesChat/tools.ts";
+import * as HermesChatHandlers from "./toolkits/hermesChat/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import { AttachmentToolkit } from "./toolkits/attachment/tools.ts";
@@ -1041,6 +1043,11 @@ const layerPaperclipToolkit = toolkitRegistration(PaperclipToolkit, PaperclipHan
   Layer.provide(ThreadCommandExecutor.layer),
 );
 
+export const layerHermesChatToolkit = toolkitRegistration(
+  HermesChatToolkit,
+  HermesChatHandlers.layer,
+);
+
 const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
 export const layerAttachmentToolkit = toolkitRegistration(
@@ -1084,6 +1091,7 @@ export const layer = Layer.mergeAll(
   layerProjectRegistration,
   layerEnvironmentToolkit,
   layerPaperclipToolkit,
+  layerHermesChatToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,

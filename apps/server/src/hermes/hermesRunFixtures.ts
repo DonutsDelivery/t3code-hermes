@@ -154,9 +154,56 @@ export function insertHermesSession(db: NodeSqlite.DatabaseSync, session: Hermes
   );
 }
 
+export interface HermesGatewaySessionFixture {
+  readonly id: string;
+  /** Null for a compression continuation, which Hermes writes without a key. */
+  readonly sessionKey: string | null;
+  readonly source?: string;
+  readonly startedAt: number;
+  readonly endedAt?: number | null;
+  readonly endReason?: string | null;
+  readonly parentSessionId?: string | null;
+  readonly lastActivityAt?: number | null;
+  readonly title?: string | null;
+  readonly displayName?: string | null;
+  readonly userName?: string;
+}
+
+/** Inserts a session the way the messaging gateway writes one. */
+export function insertHermesGatewaySession(
+  db: NodeSqlite.DatabaseSync,
+  session: HermesGatewaySessionFixture,
+) {
+  const keyed = session.sessionKey !== null;
+  db.prepare(
+    `INSERT INTO sessions (id, source, session_key, chat_type, display_name, origin_json,
+       parent_session_id, started_at, ended_at, end_reason, last_activity_at, title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    session.id,
+    session.source ?? "discord",
+    session.sessionKey,
+    keyed ? "thread" : null,
+    keyed ? (session.displayName ?? "Guild / #general / help") : null,
+    keyed
+      ? JSON.stringify({
+          platform: "discord",
+          chat_type: "thread",
+          user_name: session.userName ?? "Yato",
+        })
+      : null,
+    session.parentSessionId ?? null,
+    session.startedAt,
+    session.endedAt ?? null,
+    session.endReason ?? null,
+    session.lastActivityAt ?? null,
+    session.title ?? null,
+  );
+}
+
 export interface HermesMessageFixture {
   readonly sessionId: string;
-  readonly role: "user" | "assistant" | "tool";
+  readonly role: "user" | "assistant" | "tool" | "system" | "session_meta";
   readonly content?: string;
   readonly toolCalls?: ReadonlyArray<{
     readonly id: string;
@@ -167,14 +214,15 @@ export interface HermesMessageFixture {
   readonly toolName?: string;
   readonly timestamp: number;
   readonly compressedSummary?: boolean;
+  readonly displayKind?: string;
 }
 
 /** Inserts a message the way Hermes's conversation loop persists one. */
 export function insertHermesMessage(db: NodeSqlite.DatabaseSync, message: HermesMessageFixture) {
   db.prepare(
     `INSERT INTO messages (session_id, role, content, tool_call_id, tool_calls, tool_name,
-       timestamp, _compressed_summary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       timestamp, _compressed_summary, display_kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     message.sessionId,
     message.role,
@@ -192,5 +240,6 @@ export function insertHermesMessage(db: NodeSqlite.DatabaseSync, message: Hermes
     message.toolName ?? null,
     message.timestamp,
     message.compressedSummary ? 1 : 0,
+    message.displayKind ?? null,
   );
 }

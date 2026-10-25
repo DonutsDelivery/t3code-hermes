@@ -81,6 +81,7 @@ import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools
 import { HtmlToolkit } from "../../mcp/toolkits/html/tools.ts";
 import { EnvironmentToolkit } from "../../mcp/toolkits/environment/tools.ts";
 import { PaperclipToolkit } from "../../mcp/toolkits/paperclip/tools.ts";
+import { HermesChatToolkit } from "../../mcp/toolkits/hermesChat/tools.ts";
 import { ProjectToolkit } from "../../mcp/toolkits/project/tools.ts";
 import { WorktreeToolkit } from "../../mcp/toolkits/worktree/tools.ts";
 import { ThreadToolkit } from "../../mcp/toolkits/thread/tools.ts";
@@ -500,6 +501,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       ...Object.values(ProjectToolkit.tools),
       ...Object.values(EnvironmentToolkit.tools),
       ...Object.values(PaperclipToolkit.tools),
+      ...Object.values(HermesChatToolkit.tools),
       ...Object.values(PreviewControlsToolkit.tools),
       ...Object.values(HtmlToolkit.tools),
     ]

@@ -187,6 +187,10 @@
       "types": "./src/state/hindsight.ts",
       "default": "./src/state/hindsight.ts"
     },
+    "./state/hermesChat": {
+      "types": "./src/state/hermesChat.ts",
+      "default": "./src/state/hermesChat.ts"
+    },
     "./state/paperclip": {
       "types": "./src/state/paperclip.ts",
       "default": "./src/state/paperclip.ts"

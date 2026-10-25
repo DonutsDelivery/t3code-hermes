@@ -22,6 +22,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "paperclip",
+  "hermes-chat",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -82,7 +83,18 @@ export type RightPanelSurface =
       detailTab?: PullRequestDetailTab;
     }
   | { id: "pull-requests"; kind: "pull-requests" }
-  | { id: "paperclip"; kind: "paperclip" };
+  | { id: "paperclip"; kind: "paperclip" }
+  /**
+   * A Hermes gateway conversation, or the conversation picker while `sessionKey`
+   * is null. One tab per conversation, so several can sit side by side.
+   */
+  | {
+      id: "hermes-chat" | `hermes-chat:${string}`;
+      kind: "hermes-chat";
+      sessionKey: string | null;
+      /** The conversation's name when it was opened, for the tab before its transcript loads. */
+      title?: string;
+    };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -136,6 +148,11 @@ interface RightPanelStoreState {
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
+  /**
+   * Opens a Hermes gateway conversation, or the picker for a null key. Picking
+   * from the picker replaces it, so the picker never lingers beside its choice.
+   */
+  openHermesChat: (ref: ScopedThreadRef, sessionKey: string | null, title?: string) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   /**
    * Moves the folder browser in `surfaceId` to `relativePath` in place, so walking
@@ -229,10 +246,25 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "paperclip":
       return { id: "paperclip", kind };
+    case "hermes-chat":
+      return hermesChatSurface(null);
     case "device":
       return { id: "device", kind };
   }
 };
+
+export function hermesChatSurface(
+  sessionKey: string | null,
+  title?: string,
+): Extract<RightPanelSurface, { kind: "hermes-chat" }> {
+  if (sessionKey === null) return { id: "hermes-chat", kind: "hermes-chat", sessionKey: null };
+  return {
+    id: `hermes-chat:${encodeURIComponent(sessionKey)}`,
+    kind: "hermes-chat",
+    sessionKey,
+    ...(title === undefined ? {} : { title }),
+  };
+}
 
 const browserSurface = (tabId: string | null): RightPanelSurface =>
   tabId
@@ -509,6 +541,13 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         }),
                       ];
                     }
+                    if (surface.kind === "hermes-chat") {
+                      const sessionKey: unknown = surface.sessionKey;
+                      const title = typeof surface.title === "string" ? surface.title : undefined;
+                      return typeof sessionKey === "string" || sessionKey === null
+                        ? [hermesChatSurface(sessionKey, title)]
+                        : [];
+                    }
                     if (surface.kind !== "terminal") return [surface];
                     if (
                       !("resourceId" in surface) ||
@@ -708,6 +747,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               ? current.surfaces.filter((entry) => entry.id !== "browser:new")
               : current.surfaces;
             return upsertSurface({ ...current, surfaces: withoutPlaceholder }, surface);
+          }),
+        ),
+      openHermesChat: (ref, sessionKey, title) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            const surface = hermesChatSurface(sessionKey, title);
+            if (sessionKey === null) return upsertSurface(current, surface);
+            const pickerIndex = current.surfaces.findIndex((entry) => entry.id === "hermes-chat");
+            const exists = current.surfaces.some((entry) => entry.id === surface.id);
+            const surfaces =
+              pickerIndex < 0
+                ? current.surfaces
+                : exists
+                  ? current.surfaces.filter((entry) => entry.id !== "hermes-chat")
+                  : current.surfaces.map((entry) => (entry.id === "hermes-chat" ? surface : entry));
+            return upsertSurface({ ...current, surfaces }, surface);
           }),
         ),
       openPullRequest: (ref, target) =>

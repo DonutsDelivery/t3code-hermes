@@ -192,7 +192,8 @@ export function sourceKeyOfSession(row: {
   return fromUser ? webhookSourceKey(fromUser[1]!) : null;
 }
 
-function withStateDb<A>(dbPath: string, read: (db: NodeSqlite.DatabaseSync) => A): A | null {
+/** Runs `read` against a read-only connection; null when the store cannot be opened or read. */
+export function withStateDb<A>(dbPath: string, read: (db: NodeSqlite.DatabaseSync) => A): A | null {
   let database: NodeSqlite.DatabaseSync;
   try {
     database = new NodeSqlite.DatabaseSync(dbPath, { readOnly: true, timeout: 5_000 });
