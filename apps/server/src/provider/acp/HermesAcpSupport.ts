@@ -1,12 +1,6 @@
 /**
- * HermesAcpSupport — spawn, model, and mode helpers for the Hermes Agent
- * ACP stdio server (`hermes acp`).
- *
- * Hermes reads its credentials from its own `HERMES_HOME` (`~/.hermes/.env`),
- * so unlike Grok there is no API-key-vs-cached-token branch here: the
- * `authenticate` method id is a constant and the agent resolves the rest.
- *
- * @module provider/acp/HermesAcpSupport
+ * Spawn, model, and mode helpers for `hermes acp`. Hermes reads credentials from its own
+ * `HERMES_HOME`, so `authenticate` is a constant.
  */
 import {
   type HermesSettings,
@@ -35,10 +29,9 @@ const HERMES_AUTH_METHOD_ID = "hermes";
 export const HERMES_FALLBACK_MODEL_ID = "hermes-4";
 
 /**
- * Mode ids Hermes derives from its edit-approval policy (`default`,
- * `accept_edits`, `dont_ask`). Matching is by id, name, then substring, so
- * builds that rename a policy still resolve. Order is preference: `dont_ask`
- * auto-allows every edit, while `accept_edits` still asks outside the
+ * Mode ids Hermes derives from its edit-approval policy (`default`, `accept_edits`, `dont_ask`).
+ * Matching is by id, name, then substring, so builds that rename a policy still resolve. Order is
+ * preference: `dont_ask` auto-allows every edit, while `accept_edits` still asks outside the
  * workspace.
  */
 const HERMES_AUTONOMOUS_MODE_ALIASES = [
@@ -60,15 +53,9 @@ const HERMES_ACCEPT_EDITS_MODE_ALIASES = [
 const HERMES_APPROVAL_MODE_ALIASES = ["ask", "approve", "manual", "confirm", "default"];
 
 /**
- * Slash commands the Hermes ACP adapter handles locally, mirroring its
- * `_ADVERTISED_COMMANDS` table (`acp_adapter/server.py`). Hermes advertises the
- * same list over `available_commands_update` shortly after `session/new`; this
- * seed keeps the composer menu populated on a cold snapshot and whenever the
- * probe's session closes before that notification lands.
- *
- * Note these are the *ACP adapter's* commands, which are a different set from
- * the interactive `hermes` TUI's commands — the adapter only implements the
- * nine below, and anything else is forwarded to the model as ordinary prose.
+ * Slash commands the Hermes ACP adapter handles, mirroring `_ADVERTISED_COMMANDS` in
+ * `acp_adapter/server.py` (not the TUI's set). Seeds the composer before
+ * `available_commands_update` lands.
  */
 export const HERMES_BUILT_IN_SLASH_COMMANDS: ReadonlyArray<ServerProviderSlashCommand> = [
   { name: "help", description: "List available commands" },
@@ -115,19 +102,9 @@ const HERMES_OUTPUT_FIELD = "- **output:**";
 const HERMES_EXIT_CODE_FIELD = /^- \*\*exit_code:\*\* (-?\d+)$/;
 
 /**
- * Hermes sends no `rawOutput` for its `terminal` tool. Its completion content
- * is a markdown summary instead (`_format_generic_structured_result` in
- * acp_adapter/tools.py):
- *
- *     terminal result
- *     - **output:** <command output, possibly multi-line>
- *     - **exit_code:** 0
- *
- * Clients only receive a one-line preview of tool content, so every Hermes
- * command would read "terminal result". Move the output into
- * `rawOutput.stdout` and drop the summary so the preview is the real output.
- * Anything else, including Hermes's `terminal failed: <error>` text, passes
- * through untouched.
+ * Hermes's `terminal` tool sends a markdown summary instead of `rawOutput`, so client previews
+ * would read "terminal result". Move the output into `rawOutput.stdout` and drop the summary; other
+ * text passes through.
  */
 export function normalizeHermesTerminalResult(toolCall: AcpToolCallState): AcpToolCallState {
   if (
@@ -256,20 +233,14 @@ export function applyHermesAcpModelSelection<E>(input: {
   readonly requestedModelId: string | undefined;
   readonly mapError: (cause: EffectAcpErrors.AcpError) => E;
   /**
-   * Re-send `session/set_model` even when the model is unchanged.
-   *
-   * Hermes rebuilds the session's agent from `config.yaml` on every
-   * `set_session_model`, so this is how a setting that only lives in that file
-   * — reasoning effort — reaches a session that is already running. The session
-   * id and its history survive the rebuild, exactly as they do for a real model
-   * switch.
+   * Re-send `session/set_model` even when unchanged: Hermes rebuilds the agent from `config.yaml`,
+   * which is how reasoning effort reaches a running session. Session id and history survive.
    */
   readonly forceReapply?: boolean;
 }): Effect.Effect<string | undefined, E> {
-  // Hermes model ids are `provider:model`, so the bare placeholder is never
-  // one: asking for it means "keep whatever the profile runs".
-  // A bare model naming the one already running (a background run's thread
-  // records the bare model when its provider was a `custom` endpoint) is a
+  // Hermes model ids are `provider:model`, so the bare placeholder is never one: asking for it
+  // means "keep whatever the profile runs". A bare model naming the one already running (a
+  // background run's thread records the bare model when its provider was a `custom` endpoint) is a
   // keep as well.
   const requestedModelId =
     input.requestedModelId === HERMES_FALLBACK_MODEL_ID ||

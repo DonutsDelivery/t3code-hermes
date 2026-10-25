@@ -1,11 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * These tests are the tripwire for a Hermes upgrade.
- *
- * The run-ledger cases build a real SQLite database from the DDL Hermes itself
- * executes, and the job cases start from the full record `create_job` writes.
- * If Hermes changes either shape, these fail here rather than in someone's
- * Tasks panel. See `hermesCronFixtures.ts`.
+ * The run-ledger cases build a real SQLite database from the DDL Hermes itself executes, and the
+ * job cases start from the full record `create_job` writes. If Hermes changes either shape, these
+ * fail here rather than in someone's Tasks panel. See `hermesCronFixtures.ts`.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

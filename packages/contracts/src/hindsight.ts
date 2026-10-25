@@ -1,42 +1,17 @@
 /**
- * Hindsight ("Memory") contract.
- *
- * [Hindsight](https://github.com/vectorize-io/hindsight) is an open-source
- * agent memory service. It stores facts in *banks* and sorts them onto
- * pathways — world knowledge, lived experience, consolidated observations, and
- * the mental models it writes about them — and answers three operations:
- * `recall` (semantic search), `retain` (write), and `reflect` (reason over the
- * bank and answer in prose).
- *
- * T3 Code renders one bank at a time as the Memory tab of the Hermes panel.
- * Every byte of that traffic goes server-side: Hindsight is expected to be
- * bound to loopback on the same host as the T3 server, so a client on a phone
- * or through a tunnel could never reach it directly, and its API key must not
- * leave the server process.
- *
- * The surface is read-mostly. The only writes are the two a panel legitimately
- * owns — retain one note, and ask for a reflection now. Editing and deleting
- * memories stay in Hindsight's own tools, because a memory store you can
- * silently prune from a side panel is a memory store you cannot trust.
- *
- * Reads never fail for an unreachable service: every read answers with a
- * {@link HindsightStatus} so the panel can say "Hindsight is not running"
- * instead of rendering an error toast over an empty list.
- *
- * @module hindsight
+ * Hindsight ("Memory") contract: one bank at a time, all traffic server-side so the API key stays
+ * there. Read-mostly: the only writes are retain one note and reflect now. Reads never fail; they
+ * answer with a {@link HindsightStatus}.
  */
 import * as Schema from "effect/Schema";
 
 import { ForwardCompatibleArray, IsoDateTime, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 /**
- * Bumped whenever the shapes below change incompatibly, so a client talking to
- * an older environment renders an "update T3 Code" notice rather than a
- * half-decoded panel.
- *
- * 2 — added `requestFailed` to {@link HindsightAvailability}, so a read that
- * fails (unknown bank, HTTP error) is reported as a failure instead of an
- * empty result.
+ * Bumped whenever the shapes below change incompatibly, so a client talking to an older environment
+ * renders an "update T3 Code" notice rather than a half-decoded panel.
+ * 2 — added `requestFailed` to {@link HindsightAvailability}, so a read that fails (unknown bank,
+ * HTTP error) is reported as a failure instead of an empty result.
  */
 export const HINDSIGHT_CONTRACT_VERSION = 2 as const;
 
@@ -61,12 +36,8 @@ export const HindsightBankId = TrimmedNonEmptyString.pipe(Schema.brand("Hindsigh
 export type HindsightBankId = typeof HindsightBankId.Type;
 
 /**
- * Where a memory sits in Hindsight's own taxonomy.
- *
- * The first three are `fact_type` values Hindsight stamps on a memory unit.
- * `mentalModel` is a different resource entirely — a standing summary Hindsight
- * maintains by reflecting over the bank — but it reads as one more kind of
- * thing the agent remembers, so the panel lists it alongside the rest.
+ * Where a memory sits in Hindsight's taxonomy: the first three are `fact_type` values;
+ * `mentalModel` is a separate resource listed alongside them.
  */
 export const HindsightPathway = Schema.Literals([
   "world",
@@ -234,13 +205,8 @@ export const HindsightPathwayCount = Schema.Struct({
 export type HindsightPathwayCount = typeof HindsightPathwayCount.Type;
 
 /**
- * The size of a bank, as the Memory tab's stats strip renders it.
- *
- * Hindsight reports far more than this — link types, per-status operation
- * counts, a full links breakdown — and none of it answers a question someone
- * has while reading their agent's memories. What is kept is the size of the
- * store, the shape of it, and the two numbers that mean something is wrong
- * (work queued, work that failed).
+ * A bank's size for the stats strip: store size, shape, and the two trouble numbers (queued and
+ * failed work).
  */
 export const HindsightBankStats = Schema.Struct({
   /** Memories in the bank, across every pathway. */
@@ -345,12 +311,8 @@ export const HindsightReflectResult = Schema.Struct({
 export type HindsightReflectResult = typeof HindsightReflectResult.Type;
 
 /**
- * Only writes fail this way.
- *
- * Reads answer with a {@link HindsightStatus} instead, because "Hindsight is
- * not running" is a state the panel renders, not an error it reports. A write
- * has no such resting state — the user pressed a button and is owed an answer —
- * so it keeps the same vocabulary in a failure the client can toast.
+ * Write failures only. Reads answer with a {@link HindsightStatus} instead; a write owes the user
+ * an answer, so it fails with the same vocabulary.
  */
 export class HindsightError extends Schema.TaggedError<HindsightError>()("HindsightError", {
   reason: Schema.Literals([

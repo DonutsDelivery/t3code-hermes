@@ -1,10 +1,6 @@
 /**
- * The read-only Hermes conversation surface: one gateway chat (Discord, ...)
- * as Hermes saw it, or a picker of recent ones while no conversation is chosen.
- *
- * Everything comes from on-demand `hermes.chatList` / `hermes.chatTranscript`
- * reads through the environment's server, so it works the same remotely.
- * Nothing here can reply: the conversation belongs to the platform.
+ * The read-only Hermes conversation surface: one gateway chat or a recent-chat picker, read on
+ * demand through the environment's server. Nothing here can reply.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {

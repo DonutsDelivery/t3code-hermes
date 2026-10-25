@@ -1,12 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * These tests pin the two things a Hermes upgrade can quietly break: which
- * levels a model is offered (against the shape of Hermes's own
- * `models_dev_cache.json`) and what a write does to the user's `config.yaml`.
- *
- * The ceiling and forced-thinking cases are ports of Hermes's own rules, so a
- * failure here means either Hermes changed them or we drifted from them — not
- * that a T3 Code UI detail moved.
+ * Pins what a Hermes upgrade can quietly break: the levels a model is offered (from
+ * `models_dev_cache.json`) and what a write does to `config.yaml`. Ceiling and forced-thinking
+ * cases port Hermes's own rules.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

@@ -1,31 +1,8 @@
 /**
- * HindsightAgentMemory — keeps this host's coding agents wired into Hindsight.
- *
- * `integrations.hindsight.agentMemory` is the whole interface: switched on,
- * every supported agent configured on this environment recalls from and
- * retains to the Hindsight connection the Memory tab already resolves;
- * switched off, what T3 Code added is taken back out. The work runs on the
- * environment's own host, so a remote or tunnelled environment wires its own
- * agents, never the machine the client happens to run on.
- *
- * Claude Code and Codex are wired by Hindsight's own installer
- * (`@vectorize-io/hindsight-coding-agents`), which owns their hooks, MCP entry
- * and skill. Hermes has a native Hindsight memory provider, so it only needs
- * that provider switched on and, when it has no Hindsight config of its own,
- * pointed at this connection.
- *
- * A pass is idempotent and only acts on drift: it runs at startup, whenever the
- * settings it depends on change, and on an explicit retry. Undoing is driven
- * by a ledger of what T3 Code itself changed, so an agent someone wired by
- * hand — or a Hermes install that already used Hindsight — is never torn down
- * by switching this off; it is only pointed back at the server it used before.
- * The ledger is saved before anything it covers is changed, and an entry is
- * cleared only once its undo succeeds, so a failed one is retried by the next
- * pass. Wiring follows what should be wired right now: with Memory off, no
- * server left, or an agent no longer set up, what T3 Code wired for it is
- * taken out, and the switch puts it back once it should be wired again.
- *
- * @module HindsightAgentMemory
+ * Keeps this host's agents wired into the Memory tab's Hindsight connection while
+ * `integrations.hindsight.agentMemory` is on: Claude Code and Codex via Hindsight's installer,
+ * Hermes via its native provider. Passes are idempotent and act on drift; a ledger saved first
+ * undoes only what T3 Code changed.
  */
 import * as NodeOS from "node:os";
 
@@ -125,11 +102,10 @@ const INITIAL_STATE: HindsightAgentMemoryState = {
 const AgentMemoryLedger = Schema.Struct({
   codingAgents: Schema.Array(Schema.Literals(["claudeCode", "codex"])),
   /**
-   * The installer config's connection fields as they were before T3 Code
-   * first ran the installer, and whether the file existed. The installer keeps
-   * the server and token only there, so putting them back returns a hand-made
-   * install to its own server; every other field is left as it is by then.
-   * Absent while T3 Code has not touched it.
+   * The installer config's connection fields as they were before T3 Code first ran the installer,
+   * and whether the file existed. The installer keeps the server and token only there, so putting
+   * them back returns a hand-made install to its own server; every other field is left as it is by
+   * then. Absent while T3 Code has not touched it.
    */
   installerConnection: Schema.optionalKey(
     Schema.Struct({
@@ -364,7 +340,7 @@ export class HindsightAgentMemory extends Context.Service<
   }
 >()("t3-hermes/integrations/hindsight/HindsightAgentMemory") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.fn("HindsightAgentMemory.make")(function* (
   options: { readonly homeDir?: string } = {},
 ) {

@@ -1,15 +1,7 @@
 /**
- * The Hermes fast-mode toggle: which models offer it, and the session option
- * it sets.
- *
- * Hermes owns the decision. Its `/fast` gate allows a model on a first-party
- * endpoint that bills for fast mode, or on a custom endpoint the user opted in
- * with `capabilities: {fast_mode: true}`. Hermes carrying T3 Code's
- * `acp-fast-mode` patch marks those picker rows with `_meta.hermes.fastMode`
- * and takes the choice per session as the `fast_mode` config option. Stock
- * Hermes marks nothing, so the toggle never appears where it would be ignored.
- *
- * @module hermesFastMode
+ * The Hermes fast-mode toggle. Hermes decides eligibility; with T3 Code's `acp-fast-mode` patch it
+ * marks eligible picker rows with `_meta.hermes.fastMode` and takes a per-session `fast_mode`
+ * option. Stock Hermes marks nothing, so the toggle never appears where it would be ignored.
  */
 import type { ModelSelection } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/compat";

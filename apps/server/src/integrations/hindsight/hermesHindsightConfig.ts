@@ -1,22 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // Pure path and home-directory resolution, shared with tests; file reads go through Effect's FileSystem.
 /**
- * Hermes Agent's own Hindsight connection, read the way Hermes reads it.
- *
- * Hermes' Hindsight memory plugin resolves its connection from
- * `$HERMES_HOME/hindsight/config.json`, then the legacy shared
- * `~/.hindsight/config.json`, then `HINDSIGHT_*` variables — where
- * `$HERMES_HOME/.env` outranks the shell. Mirroring that order is what lets an
- * environment running Hermes browse the same memory bank with no setup.
- *
- * Only the connection is read: URL, bank and key. Retain and recall tuning
- * belong to Hermes. A `bank_id_template` resolves per profile or session at
- * run time, so its static `bank_id` fallback is the best a side panel can do.
- *
- * Verified against the Hermes Agent `plugins/memory/hindsight` plugin shipped
- * with Hermes 0.20.
- *
- * @module hermesHindsightConfig
+ * Hermes's own Hindsight connection, resolved in its order: `$HERMES_HOME/hindsight/config.json`,
+ * `~/.hindsight/config.json`, then `HINDSIGHT_*` (`$HERMES_HOME/.env` first). Only URL, bank, and
+ * key; `bank_id_template` uses its static fallback. Verified against Hermes 0.20.
  */
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -107,12 +94,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Hermes' connection from what was found on disk, or null when Hermes is not
- * set up to use Hindsight.
- *
- * `config` is the first config file that parsed to an object, as Hermes skips
- * one that is missing or malformed. `environment` is the process environment
- * with Hermes' `.env` already laid over it.
+ * Hermes' connection from what was found on disk, or null when Hermes is not set up to use
+ * Hindsight.
+ * `config` is the first config file that parsed to an object, as Hermes skips one that is missing
+ * or malformed. `environment` is the process environment with Hermes' `.env` already laid over it.
  */
 export function resolveHermesHindsightConfig(input: {
   readonly config: { readonly path: string; readonly value: unknown } | null;

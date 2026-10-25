@@ -10,36 +10,10 @@ import * as Stream from "effect/Stream";
 import type { ProviderAdapterV2Event } from "@t3tools/provider-core/server/ProviderAdapter";
 
 /**
- * Live output-token throughput of each thread's running turn, measured where
- * the provider's raw deltas arrive, before the paragraph buffer holds text
- * back from clients. Tokens are chars ÷ 4; no provider reports a per-delta
- * token count.
- *
- * Each delta is charged with the time since the previous output, or since the
- * run's last tool or approval activity, so time spent in tools never dilutes
- * the rate. A silence before output is charged too, but only as long as the
- * output could plausibly have taken: a held-back flush (Claude's answer after
- * summarized thinking, an ACP agent's whole reply) spreads over its silence
- * instead of reading as a thousand tokens per second, while the few characters
- * that end a long hidden-reasoning silence are not charged with all of it and
- * read as a crawl. The first output after the prompt is uncharged, keeping
- * time to first token out. The rate is total tokens over total charged time
- * across a short window.
- *
- * Adapters whose provider reports a response's exact output (Claude's message
- * usage, hidden thinking included) send it when the response ends, replacing
- * the estimate for its duration, so the rate held through the next tool call
- * is the real one. The run's totals (average, output tokens) are corrected the
- * same way. Such adapters also mark each response's start: until its usage
- * arrives the model is generating, however long its output is held back, and
- * the wait since the run's request (its prompt, a tool's result) is the
- * response's time to first token.
- *
- * Memory only, one meter per thread for its latest run. Clients subscribe per
- * thread and get a push at most every {@link TICK_MS} while the run generates,
- * then one idle push holding the last rate; nothing is sent while it is idle.
- *
- * @module orchestration-v2/RunThroughputMeter
+ * Live output throughput per thread's running turn, from raw deltas at chars ÷ 4. Each delta is
+ * charged the time since the last output or tool activity, capped for silences; exact usage
+ * replaces estimates when a response ends. Memory only; pushes at most every {@link TICK_MS} while
+ * generating, then one idle push.
  */
 
 const CHARS_PER_TOKEN = 4;

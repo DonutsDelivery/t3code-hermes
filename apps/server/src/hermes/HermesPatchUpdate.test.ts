@@ -64,12 +64,9 @@ const NEWER_DATE = "2026-09-15T00:00:00Z";
 const NEWEST_DATE = "2026-09-30T00:00:00Z";
 
 /**
- * A Hermes stand-in: an upstream bare repo with two commits (upstream rewrote
- * the line next to the patched one in between), and a checkout cloned from it
- * sitting at the older commit. Its `venv/bin/hermes` handles `update` with a
- * `git pull --rebase`, which carries any local commit along as `hermes update`
- * does. `newerVersion` is the patch
- * version made for the newer commit, `olderVersion` the one for the older.
+ * A Hermes stand-in: a bare upstream repo with two commits and a checkout at the older one. Its
+ * `venv/bin/hermes update` runs `git pull --rebase` like `hermes update`.
+ * `newerVersion`/`olderVersion` are the patch versions made for each commit.
  */
 const CURRENT_UPDATE_HELP =
   "usage: hermes update [-h] [--yes] [--keep-stash] [--no-gateway-restart]";

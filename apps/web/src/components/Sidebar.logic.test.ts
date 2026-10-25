@@ -283,6 +283,19 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe("approval");
   });
 
+  it("shows a waiting guest message as a Request, below the agent's own requests", () => {
+    expect(resolveSidebarThreadStatus({ ...idle, pendingGuestMessageCount: 1, runtime })).toBe(
+      "request",
+    );
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        hasPendingUserInput: true,
+        pendingGuestMessageCount: 1,
+      }),
+    ).toBe("input");
+  });
+
   it("keeps usage-limit stops Limited and visible until the thread recovers", () => {
     const limited = {
       ...runtime,
@@ -354,6 +367,10 @@ describe("resolveThreadStatusRing", () => {
     expect(resolveThreadStatusRing({ status: "input", isUnread: false })).toMatchObject({
       motion: "breathe",
       colorClass: "text-indigo-500 dark:text-indigo-300",
+    });
+    expect(resolveThreadStatusRing({ status: "request", isUnread: false })).toMatchObject({
+      motion: "breathe",
+      colorClass: "text-fuchsia-500 dark:text-fuchsia-300",
     });
     expect(resolveThreadStatusRing({ status: "failed", isUnread: false })).toMatchObject({
       motion: "alarm",
@@ -1014,23 +1031,54 @@ describe("navigation after parking a thread", () => {
 
 describe("unseen completion with background work", () => {
   it.each([
-    { kind: "command", status: "ready", topStatus: "done", receded: false, pill: "Completed" },
     {
-      kind: "monitor",
+      roster: "dev server",
+      task: { kind: "command" },
+      status: "ready",
+      topStatus: "done",
+      receded: false,
+      pill: "Completed",
+    },
+    {
+      roster: "dev server watchdog",
+      task: { kind: "monitor" },
+      status: "ready",
+      topStatus: "done",
+      receded: false,
+      pill: "Completed",
+    },
+    {
+      roster: "awaited command",
+      task: { kind: "command", awaited: true },
+      status: "waiting",
+      topStatus: "waiting",
+      receded: true,
+      pill: "Waiting",
+    },
+    {
+      roster: "subagent",
+      task: { kind: "subagent" },
+      status: "waiting",
+      topStatus: "waiting",
+      receded: true,
+      pill: "Waiting",
+    },
+    {
+      roster: "awaited monitor",
+      task: { kind: "monitor", awaited: true },
       status: "monitoring",
       topStatus: "monitoring",
       receded: true,
       pill: "Monitoring",
     },
-    { kind: "subagent", status: "waiting", topStatus: "waiting", receded: true, pill: "Waiting" },
-  ] as const)("presents a completed thread with a $kind roster", (expected) => {
+  ] as const)("presents a completed thread with a $roster roster", (expected) => {
     const thread = presentThreadShell(localEnvironmentId, {
       ...makeThreadFixture().source,
       latestRunId: RunId.make("run-background-completion"),
       status: "completed",
       latestRunCompletedAt: DateTime.makeUnsafe("2026-06-20T01:00:00.000Z"),
       lastVisitedAt: DateTime.makeUnsafe("2026-06-20T00:59:00.000Z"),
-      pendingBackgroundTasks: [{ taskId: "background-work", kind: expected.kind }],
+      pendingBackgroundTasks: [{ taskId: "background-work", ...expected.task }],
     });
     const status = resolveSidebarThreadStatus(thread);
     const isUnread = hasUnseenCompletion(thread);

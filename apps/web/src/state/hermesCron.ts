@@ -19,11 +19,9 @@ const HERMES_DRIVER_KIND = ProviderDriverKind.make("hermes");
 
 /**
  * Every connected environment with Hermes enabled, primary first.
- *
- * Hermes is a built-in driver, so every environment reports a snapshot for it
- * — disabled by default. Matching on presence alone would list every
- * environment and default to the primary one, never the remote box actually
- * running Hermes.
+ * Hermes is a built-in driver, so every environment reports a snapshot for it — disabled by
+ * default. Matching on presence alone would list every environment and default to the primary one,
+ * never the remote box actually running Hermes.
  */
 const hermesEnvironmentIdsAtom = Atom.make((get): ReadonlyArray<EnvironmentId> => {
   const primaryId = get(primaryEnvironmentIdAtom);
@@ -46,12 +44,10 @@ const hermesEnvironmentIdsAtom = Atom.make((get): ReadonlyArray<EnvironmentId> =
 }).pipe(Atom.withLabel("web-hermes-environment-ids"));
 
 /**
- * The environment the Hermes panel opens on and the sidebar watches, or `null`
- * when no connected environment has Hermes enabled.
- *
- * Hermes often lives on an always-on box that is not the environment a browser
- * opened first, so this resolves across every connected environment (primary
- * first, so a local Hermes still wins).
+ * The environment the Hermes panel opens on and the sidebar watches, or `null` when no connected
+ * environment has Hermes enabled.
+ * Hermes often lives on an always-on box that is not the environment a browser opened first, so
+ * this resolves across every connected environment (primary first, so a local Hermes still wins).
  */
 const hermesEnvironmentIdAtom = Atom.make(
   (get): EnvironmentId | null => get(hermesEnvironmentIdsAtom)[0] ?? null,

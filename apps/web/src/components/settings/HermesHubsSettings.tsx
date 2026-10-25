@@ -1,11 +1,6 @@
 /**
- * External thread hubs: pinned threads that collect Hermes gateway
- * conversations from the Discord channels each hub names.
- *
- * The hub list is environment settings, saved whole: settings deep-merge
- * replaces arrays, so each save writes the list exactly as shown.
- *
- * @module HermesHubsSettings
+ * Pinned threads that collect Hermes gateway conversations from the Discord channels each hub
+ * names. Saved whole because settings deep-merge replaces arrays.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {

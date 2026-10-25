@@ -1,31 +1,8 @@
 /**
- * HindsightService — the environment's side of the Memory tab.
- *
- * Hindsight is an HTTP service on the same host, usually bound to loopback.
- * Every request a client makes goes through here, which is the whole point:
- * the panel works identically from a phone, a tunnel, or the desktop app, and
- * the API key never leaves this process.
- *
- * Request/response only. There is no poll, no subscription and no cache of
- * memories — the panel asks when the user asks, and Hindsight is a local
- * process answering in milliseconds. The one thing that is remembered is the
- * compatibility probe: `GET /version` is hit once and its verdict reused, so a
- * version mismatch is reported once at the top of the panel instead of turning
- * every keystroke into a failed round trip.
- *
- * Reads never fail. An unconfigured or unreachable Hindsight comes back as a
- * {@link HindsightStatus} on an empty result, because "not running" is
- * something the panel renders in words with a retry button, not an error toast
- * over a blank list. Writes do fail, with the same vocabulary as a reason —
- * the user pressed a button and is owed a straight answer.
- *
- * The connection is resolved per request: `integrations.hindsight` overrides
- * first, then the Hermes install's own Hindsight config (see
- * `hermesHindsightConfig.ts`), so editing either takes effect on the next read
- * without a restart. With the integration switched off, or nothing
- * configured anywhere, no socket is opened and the panel says why.
- *
- * @module HindsightService
+ * The Memory tab's server side, so the API key stays here. Request/response with no memory cache;
+ * only the `GET /version` verdict is reused. Reads never fail (a {@link HindsightStatus}); writes
+ * fail with the same vocabulary. The connection resolves per request from settings, then Hermes's
+ * config.
  */
 import {
   HINDSIGHT_CONTRACT_VERSION,
@@ -209,14 +186,8 @@ function statusOf(probe: HindsightProbe): HindsightStatus {
 }
 
 /**
- * Whether a decoded `api_version` falls on the same major as the version this
- * build was transcribed from.
- *
- * A Hindsight that bumps its minor or patch keeps answering in the same shapes;
- * a major bump is when Hindsight stops guaranteeing the shapes it used to send,
- * which is the one case that must render as `incompatible`. `api_version` is a
- * bare string Hindsight controls, so an unparsable first segment is treated as
- * incompatible rather than guessed.
+ * Whether `api_version` has the major this build was transcribed from. Minor bumps keep shapes; a
+ * major bump or unparseable version is `incompatible`.
  */
 function isCompatibleApiVersion(apiVersion: string): boolean {
   const foundMajor = apiVersion.trim().split(".")[0] ?? "";
@@ -314,7 +285,7 @@ export class HindsightService extends Context.Service<
   }
 >()("t3-hermes/integrations/hindsight/HindsightService") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const fs = yield* FileSystem.FileSystem;
@@ -395,11 +366,9 @@ export const make = Effect.gen(function* () {
 
   /**
    * One call, decoded.
-   *
-   * Every way this can go wrong is folded into the vocabulary the panel
-   * speaks: a transport error or a timeout is `offline`, a body that will not
-   * decode is `incompatible`, and anything else Hindsight says is
-   * `requestFailed` with its status code.
+   * Every way this can go wrong is folded into the vocabulary the panel speaks: a transport error
+   * or a timeout is `offline`, a body that will not decode is `incompatible`, and anything else
+   * Hindsight says is `requestFailed` with its status code.
    */
   const send = Effect.fn("HindsightService.send")(function* <A, I>(
     request: HttpClientRequest.HttpClientRequest,
@@ -446,21 +415,9 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * The cached compatibility verdict, probing once if needed.
-   *
-   * Only a healthy verdict is reused, and only while the URL and key it was
-   * reached with are still the ones in effect. Every other verdict is re-asked,
-   * which is how the panel's retry button recovers without a server restart:
-   *
-   * - the user points Settings (or Hermes) at another Hindsight and the old
-   *   verdict no longer applies;
-   * - the user starts Hindsight and the stale `offline` verdict is thrown away;
-   * - the user upgrades (or downgrades) Hindsight and the stale `incompatible`
-   *   verdict is thrown away;
-   * - a read that failed mid-flight (bank deleted underneath the panel, for
-   *   example) re-probes on the next attempt instead of trusting the cache.
-   *
-   * `refresh` (the panel's retry) forces the probe regardless.
+   * The cached verdict, probing if needed. Only a healthy verdict is reused, and only for the same
+   * URL and key, so retry recovers after a repoint, a start, an upgrade, or a mid-flight failure.
+   * `refresh` forces a probe.
    */
   const probe = Effect.fn("HindsightService.probe")(function* (options: {
     readonly refresh: boolean;
@@ -516,13 +473,9 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * Runs a read, turning any failure into a status the panel can render.
-   *
-   * A read that fails mid-flight also invalidates the cached verdict, so the
-   * next attempt re-probes rather than trusting a `ready` that has since
-   * stopped being true. `invalidatesProbe: false` opts a read out of that,
-   * for a read whose failure says nothing about whether the rest of the panel
-   * still works — see {@link stats}.
+   * Runs a read, turning failure into a renderable status and invalidating the cached verdict,
+   * unless `invalidatesProbe: false` because its failure says nothing about the rest of the panel
+   * (see {@link stats}).
    */
   const readOrStatus = Effect.fn("HindsightService.readOrStatus")(function* <A>(
     run: (
@@ -735,13 +688,8 @@ export const make = Effect.gen(function* () {
     );
 
   /**
-   * Bank counts for the strip above the list.
-   *
-   * Deliberately does not invalidate the cached probe. Stats is one endpoint
-   * out of five, and a Hindsight that fails it — an older build without the
-   * route, a stats query that timed out on a huge bank — is still perfectly
-   * able to answer recalls. Poisoning the shared verdict here would replace a
-   * working list with "Memory could not be read" because a decoration failed.
+   * Bank counts for the strip. Never invalidates the probe: a failed stats call (older build, slow
+   * huge bank) must not replace a working list with an error.
    */
   const stats = (input: HindsightStatsInput) =>
     readOrStatus<HindsightStatsResult>(

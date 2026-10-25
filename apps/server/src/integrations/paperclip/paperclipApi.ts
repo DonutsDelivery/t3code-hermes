@@ -1,17 +1,7 @@
 /**
- * Wire shapes of the Paperclip HTTP API, and the mapping onto T3 Code's own.
- *
- * Transcribed from Paperclip's server routes (`server/src/routes/*.ts`) and
- * checked against a live instance. Only the fields the panel renders are
- * declared; Paperclip returns far more (adapter config, execution state,
- * budgets per window) and none of it should cross the wire to a client.
- *
- * Decoding is deliberately forgiving inside a list and strict at its root: a
- * single agent with an unexpected field shape is dropped rather than failing
- * the whole roster, but a list that is not a list means Paperclip changed and
- * is reported as `incompatible`.
- *
- * @module paperclipApi
+ * Paperclip HTTP API wire shapes, transcribed from its `server/src/routes/*.ts`; only fields the
+ * panel renders are declared. Forgiving inside a list (a malformed row is dropped), strict at its
+ * root (a non-list is `incompatible`).
  */
 import type {
   PaperclipActivity,

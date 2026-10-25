@@ -1,20 +1,9 @@
 // The links file is read with node:fs's synchronous API, like the state readers.
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Pure pieces of Hermes conversation hubs: matching conversations to hub
- * channels, resolving the links that currently hold, and tailing the links
- * file Hermes's gateway appends to.
- *
- * The gateway writes `<hermesHome>/t3-hub-links.jsonl` whenever someone asks
- * for a conversation to live in a hub: one JSON object per line. The tailer
- * keeps its own byte offset, so each pass reads only what is new, and treats
- * anything the gateway has not finished writing (no trailing newline) as not
- * there yet.
- *
- * Everything here is synchronous and side-effect-free apart from reading the
- * links file; the service owns persistence and writes.
- *
- * @module hermesChatHubs
+ * Pure pieces of Hermes conversation hubs: matching conversations to hub channels, resolving links,
+ * and tailing the gateway's `<hermesHome>/t3-hub-links.jsonl`. The tailer keeps its own byte offset
+ * and ignores a trailing line without a newline.
  */
 import * as NodeFS from "node:fs";
 
@@ -78,11 +67,10 @@ export interface EffectiveHermesChatLink {
 }
 
 /**
- * The links that currently hold: every manual link, plus each auto-linking
- * hub's newest conversations in its channels up to its cap. A manual link to
- * the same thread as a hub's derivation wins, and cards never duplicate.
- * Detached conversations are skipped before the cap, so the hub keeps its
- * newest conversations the user has not detached. Newest activity first.
+ * The links that currently hold: every manual link, plus each auto-linking hub's newest
+ * conversations in its channels up to its cap. A manual link to the same thread as a hub's
+ * derivation wins, and cards never duplicate. Detached conversations are skipped before the cap, so
+ * the hub keeps its newest conversations the user has not detached. Newest activity first.
  */
 export function effectiveLinkedConversations(input: {
   readonly hubs: ReadonlyArray<HermesHubChannels>;

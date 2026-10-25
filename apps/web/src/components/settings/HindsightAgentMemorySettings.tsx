@@ -1,15 +1,7 @@
 /**
- * Hindsight for every agent — one switch over every connected machine.
- *
- * The switch writes `integrations.hindsight.agentMemory` to each machine this
- * client can change; each machine then wires its own agents and streams back
- * where they stand. A machine that has no Hindsight server yet is handed the
- * shared one on the way, so a freshly connected remote box needs nothing but
- * the click — unless that server takes an API key, which this client never
- * sees: then it waits for the key to be entered once below. The server and
- * key rows write to every machine too — one memory server, everywhere.
- *
- * @module HindsightAgentMemorySettings
+ * One switch over every connected machine for `integrations.hindsight.agentMemory`. A machine
+ * without a Hindsight server is handed the shared one, unless it needs an API key this client never
+ * sees. The server and key rows write to every machine too.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {

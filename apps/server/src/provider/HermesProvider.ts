@@ -128,12 +128,8 @@ export const buildInitialHermesProviderSnapshot = Effect.fn(
 });
 
 /**
- * Attaches the reasoning-effort selector to every model that has one, keeping
- * the fast-mode toggle discovery attached to the models Hermes marked.
- *
- * Applied in one place so discovered, built-in, and user-configured custom
- * models are treated identically — a custom slug is still a Hermes model and
- * still resolves through Hermes's models.dev cache.
+ * Attaches the reasoning-effort selector to every model that has one and keeps fast-mode discovery
+ * on the models Hermes marked, so discovered, built-in, and custom models are treated alike.
  */
 function withHermesReasoningCapabilities(
   models: ReadonlyArray<ServerProviderModel>,
@@ -247,11 +243,10 @@ interface HermesAcpDiscovery {
 }
 
 /**
- * How long the probe waits for Hermes's `available_commands_update`. Hermes
- * schedules it on the event loop immediately after `session/new` responds, so
- * this only has to cover a round trip; on timeout we keep the static seed.
- * Deliberately short — it is wall-clock time added to every Hermes health
- * check, and missing it costs nothing but a slightly stale menu.
+ * How long the probe waits for Hermes's `available_commands_update`. Hermes schedules it on the
+ * event loop immediately after `session/new` responds, so this only has to cover a round trip; on
+ * timeout we keep the static seed. Deliberately short — it is wall-clock time added to every Hermes
+ * health check, and missing it costs nothing but a slightly stale menu.
  */
 const HERMES_ACP_COMMAND_ADVERTISEMENT_TIMEOUT_MS = 1_000;
 
@@ -462,12 +457,9 @@ export const checkHermesProviderStatus = Effect.fn("checkHermesProviderStatus")(
       ? hermesModelsFromSettings(hermesSettings.customModels, reasoningContext, discoveredModels)
       : fallbackModels;
 
-  // Hermes authenticates from its own `~/.hermes/.env`, which T3 Code must not
-  // read. A completed ACP handshake that returned real models is the strongest
-  // signal available that those credentials resolved: Hermes only lists models
-  // whose upstream it has usable credentials for. An empty list means the
-  // handshake worked but nothing is configured, which is exactly "not
-  // authenticated" from the user's point of view.
+  // T3 Code must not read `~/.hermes/.env`, so a handshake returning models is the best credential
+  // signal: Hermes lists only models it has credentials for. An empty list reads as
+  // unauthenticated.
   const auth =
     discoveredModels.length > 0
       ? ({

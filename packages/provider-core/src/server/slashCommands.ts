@@ -1,12 +1,6 @@
 /**
- * Shared normalization for the provider snapshot's `slashCommands` field.
- *
- * Every provider that can advertise slash commands (Claude via its
- * initialization result, ACP agents via `available_commands_update`) funnels
- * through {@link dedupeSlashCommands} so the composer menu sees one entry per
- * name regardless of which provider filled the snapshot.
- *
- * @module provider-core/server/slashCommands
+ * Shared dedupe for snapshot `slashCommands`, so the composer menu gets one entry per name from
+ * Claude or ACP agents.
  */
 import type { ServerProviderSlashCommand } from "@t3tools/contracts";
 

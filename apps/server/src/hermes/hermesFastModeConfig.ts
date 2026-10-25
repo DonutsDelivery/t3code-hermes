@@ -1,21 +1,7 @@
 /**
- * Opting proxies into fast mode in Hermes's own `config.yaml` when the
- * `acp-fast-mode` patch is applied, and taking that back out when it is
- * removed.
- *
- * Hermes sends fast-mode parameters to a custom endpoint only once it carries
- * `capabilities: {fast_mode: true}`. Only endpoints that identify as
- * CLIProxyAPI are opted in: it forwards `service_tier` to the backend that
- * honours it, and a proxy that silently drops the parameter would leave a
- * toggle that does nothing. The flag T3 Code writes carries a trailing
- * comment marker, so removal takes out exactly what T3 Code added and never a
- * flag the user set by hand.
- *
- * This is the user's real Hermes config: edits go through `yaml`'s document
- * API so comments and unrelated keys survive, a file that fails to parse is
- * never rewritten, and the replacement lands atomically.
- *
- * @module hermesFastModeConfig
+ * Opts CLIProxyAPI endpoints into fast mode in Hermes's `config.yaml` (`capabilities: {fast_mode:
+ * true}`) while the `acp-fast-mode` patch is applied. A marker comment lets removal take out only
+ * what T3 Code added. Edits keep comments, never rewrite an unparseable file, and land atomically.
  */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

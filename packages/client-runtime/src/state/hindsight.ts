@@ -1,14 +1,6 @@
 /**
- * Everything the Memory tab says, minus the widgets that say it.
- *
- * The two clients render a Hindsight memory very differently — rows in a web
- * list, cells in a native list — but the words are the same, and the words are
- * the part that has to stay true: which filter means what, why the tab is
- * empty, and what a failed write should tell you. Keeping the copy and the
- * small formatters here is what stops web and mobile from drifting into two
- * different explanations of the same service.
- *
- * @module state/hindsight
+ * The Memory tab's copy and small formatters, shared so web and mobile explain Hindsight the same
+ * way.
  */
 import {
   canonicalHindsightUrl,
@@ -115,12 +107,8 @@ export interface HindsightUnavailableState {
 }
 
 /**
- * Copy for a Hindsight that cannot answer, or `null` when it can.
- *
- * The cases stay distinct all the way to the UI because each has a different
- * next action: turn Memory on, point it at a service, start a process, upgrade
- * one of the two sides, or fix the specific request that just failed.
- * `enabled` is the environment's `integrations.hindsight.enabled`.
+ * Copy for a Hindsight that cannot answer, or `null`. Cases stay distinct because each has a
+ * different next action. `enabled` is `integrations.hindsight.enabled`.
  */
 export function describeHindsightUnavailable(
   status: HindsightStatus | null,

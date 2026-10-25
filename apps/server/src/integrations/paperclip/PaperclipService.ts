@@ -1,22 +1,7 @@
 /**
- * PaperclipService — the environment's side of the Paperclip surface.
- *
- * Paperclip is an HTTP service somewhere on the user's network. Every request
- * a client makes goes through here, so the surface works the same from a
- * phone, a tunnel, or the desktop app, and the API key never leaves this
- * process.
- *
- * Request/response only, with no cache: the panel asks when it opens and when
- * the user refreshes, and one overview is a handful of parallel reads.
- *
- * Reads never fail. Anything that goes wrong comes back as a
- * {@link PaperclipStatus} on an otherwise empty overview, because "the key was
- * revoked" is a sentence with a next action, not an error toast.
- *
- * Read-only: this service only ever issues `GET`s. Acting on Paperclip is a
- * separate concern and will get its own, explicitly scoped methods.
- *
- * @module PaperclipService
+ * The environment's side of the Paperclip surface, so the API key never leaves this process.
+ * Read-only (`GET`s only), uncached, and reads never fail: errors come back as a {@link
+ * PaperclipStatus} on an empty overview.
  */
 import {
   PAPERCLIP_CONTRACT_VERSION,
@@ -134,7 +119,7 @@ export class PaperclipService extends Context.Service<
   }
 >()("t3-hermes/integrations/paperclip/PaperclipService") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const client = yield* HttpClient.HttpClient;

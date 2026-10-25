@@ -100,9 +100,11 @@ function watchDirectories(home: string, directory: string, notify: () => void): 
   };
 }
 
-/** One watcher set per environment, only while at least one client is subscribed.
- * No timers, no subprocess on reads, and no frames for unchanged snapshots.
- * @public Service construction is part of the canonical Effect module API. */
+/**
+ * One watcher set per environment, only while a client is subscribed: no timers, no subprocess on
+ * reads, no frames for unchanged snapshots.
+ * @public
+ */
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcess.Platform;
   const settings = yield* ServerSettings.ServerSettingsService;

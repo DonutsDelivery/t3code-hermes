@@ -1,20 +1,7 @@
 /**
- * Hermes panel — a full-page view opened from the sidebar, mirroring Usage.
- *
- * Four tabs: Tasks (Hermes's scheduled jobs), Memory (what the agent
- * remembers, via Hindsight), Patches (the fork's patches to Hermes itself),
- * and Skills (Hermes's learned procedures). The tab list is data, so adding
- * one is an entry plus a component.
- *
- * Hermes can run on any number of connected devices. The panel looks at one at
- * a time, chosen in the header like Settings → Providers, and every tab reads
- * that one. Patches can also look at all of them at once: they are the same
- * patches everywhere, while tasks, memory and skills belong to one device.
- *
- * Every tab renders unconditionally and speak for themselves when their backing
- * service is absent. A tab that appears only once a network read lands would
- * shift the strip after mount and would hide the one screen that tells someone
- * whether the thing they just configured is working.
+ * Full-page Hermes panel with Tasks, Memory, Patches, and Skills tabs for one device chosen in the
+ * header; Patches can also show every device. Every tab renders unconditionally so the strip never
+ * shifts and each explains a missing service.
  */
 import { HERMES_NEW_TASK_TEMPLATE } from "@t3tools/client-runtime/state/hermes-cron";
 import { type EnvironmentId, resolveEnvironmentMachineKind } from "@t3tools/contracts";

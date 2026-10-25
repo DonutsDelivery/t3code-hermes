@@ -1,21 +1,10 @@
 // Hermes's state.db is read with node:sqlite's synchronous read-only API, like the run readers.
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Readers for Hermes gateway conversations (Discord, Telegram, Slack, ...).
- *
- * The gateway stamps each session with a `session_key` naming the chat it
- * belongs to (`agent:main:discord:thread:<id>:<id>`). One conversation spans
- * many sessions: a reset starts a new session under the same key, and
- * compression ends a session with `compression` and continues in a child that
- * usually carries no key of its own, only `parent_session_id`. So a
- * conversation is every keyed session plus its compression descendants.
- *
- * Everything here is read-only and defensive like `hermesRunState`: a missing,
- * locked, or older store reads as null rather than failing.
- *
- * Verified against Hermes Agent 0.21.0 (state schema 32).
- *
- * @module hermesChatState
+ * Readers for Hermes gateway conversations. A conversation is every session stamped with its
+ * `session_key` plus their compression descendants, which carry only `parent_session_id`. Read-only
+ * and defensive: a missing, locked, or older store reads as null. Verified against Hermes Agent
+ * 0.21.0 (state schema 32).
  */
 import type * as NodeSqlite from "node:sqlite";
 

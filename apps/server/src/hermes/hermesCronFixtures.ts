@@ -1,21 +1,7 @@
 /**
- * Version-pinned fixtures for Hermes Agent's cron state.
- *
- * Everything here is transcribed from Hermes Agent **0.20.2**
- * (`NousResearch/hermes-agent`, commit `3c108589`):
- *
- * - {@link HERMES_EXECUTIONS_DDL} is the `CREATE TABLE` from
- *   `cron/executions.py::_initialize_schema`, verbatim including the `CHECK`
- *   constraint on `status`.
- * - {@link makeHermesJobRecord} produces the full key set that
- *   `cron/jobs.py::create_job` writes into `jobs.json`.
- *
- * These exist so a Hermes upgrade fails loudly here instead of quietly in a
- * user's panel. If a test in `hermesCronState.test.ts` starts failing after a
- * Hermes bump, that is the fixture doing its job: re-read the two source files
- * above, update these shapes, and decide whether the reader needs to change.
- *
- * @module hermesCronFixtures
+ * Cron state fixtures pinned to Hermes Agent 0.20.2 (`3c108589`): the `cron/executions.py` DDL
+ * verbatim and the `cron/jobs.py::create_job` key set. A failure in `hermesCronState.test.ts` after
+ * a Hermes bump means re-read those sources and update these shapes.
  */
 
 /** The Hermes release these fixtures were transcribed from. */

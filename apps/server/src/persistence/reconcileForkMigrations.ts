@@ -2,19 +2,9 @@ import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
 
 /**
- * Fork: migrations this fork once recorded in the shared ledger under an id
- * upstream has since assigned to its own migration.
- *
- * The migrator skips by id, so a database that recorded fork migration 55
- * (`ProjectionThreadsHermesRun`, which added `hermes_run_json` to the V1 threads table)
- * would never run upstream's 55 (`OrchestrationV2`) and would open without the
- * V2 schema. Forgetting the fork row lets upstream's 55 and later run. The
- * column it added stays: it is nullable, nothing upstream reads it, and
- * the legacy V1 importer reads it to bring pre-V2 run threads forward (V2 keeps
- * `hermesRun` in the thread's event payload, outside the migrator).
- *
- * The fork keeps no rows in this ledger from here on, so this list only ever
- * shrinks to what old fork builds shipped.
+ * Fork migration ids recorded in the shared ledger under ids upstream later used. Forgetting fork
+ * 55 (`hermes_run_json`) lets upstream's 55 (`OrchestrationV2`) run; the nullable column stays for
+ * the V1 importer. This list only shrinks.
  */
 const FORK_LEDGER_ROWS = [{ id: 55, name: "ProjectionThreadsHermesRun" }] as const;
 

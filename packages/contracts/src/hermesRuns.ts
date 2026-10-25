@@ -1,14 +1,7 @@
 /**
- * Hermes runs contract: which of Hermes's background jobs mirror into threads.
- *
- * Hermes does work on its own — webhook routes fire on incoming events and
- * cron jobs fire on a schedule — in any of its profiles. The environment
- * discovers those sources from Hermes's own config and session store, and the
- * user switches on the ones whose runs should appear as threads in a project.
- * Everything else about a run (its transcript, PR, and lifecycle) arrives
- * through the ordinary thread read model, with `hermesRun` on the thread.
- *
- * @module hermesRuns
+ * Which Hermes background jobs (webhook routes, cron jobs, any profile) mirror into threads in a
+ * project. A run's transcript, PR, and lifecycle arrive through the ordinary thread read model as
+ * `hermesRun`.
  */
 import * as Schema from "effect/Schema";
 
@@ -21,11 +14,10 @@ import {
 } from "./baseSchemas.ts";
 
 /**
- * A Hermes background run (a webhook route delivery or a cron job firing)
- * mirrored into this thread. Hermes runs these on its own; T3 Code tails
- * Hermes's session store and replays each run as a thread. `live` holds while
- * Hermes is still working, and replies to any thread of the same source wait
- * for every live run of that source to finish.
+ * A Hermes background run (a webhook route delivery or a cron job firing) mirrored into this
+ * thread. Hermes runs these on its own; T3 Code tails Hermes's session store and replays each run
+ * as a thread. `live` holds while Hermes is still working, and replies to any thread of the same
+ * source wait for every live run of that source to finish.
  */
 export const ThreadHermesRun = Schema.Struct({
   /** Hermes profile the run belongs to: "default", or a name under `profiles/`. */
@@ -129,11 +121,9 @@ export function hermesRunIdPrefix(run: Pick<ThreadHermesRun, "profile" | "sessio
 }
 
 /**
- * Whether a thread's latest activity is a mirrored cron run that Hermes Tasks already announces.
- * Tasks reads the default profile's cron ledger and alerts every run of it (with the delivered
- * message and per-job mute), including runs that never become threads, so the thread must not
- * alert a second time. A mirrored run has no T3 run of its own, so once a reply starts a run
- * (`latestRunId`) the thread alerts as usual. Webhook runs and other profiles still alert.
+ * Whether a thread's latest activity is a mirrored default-profile cron run Hermes Tasks already
+ * announces, so it isn't alerted twice. Once a reply starts a run (`latestRunId`), the thread
+ * alerts as usual.
  */
 export function isHermesTasksAnnouncedTurn(thread: {
   readonly hermesRun?: ThreadHermesRun | null | undefined;

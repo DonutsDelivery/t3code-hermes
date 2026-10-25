@@ -51,12 +51,9 @@ const DRIVER_KIND = ProviderDriverKind.make("hermes");
 // Hermes is not on npm; its GitHub release titles carry the semver that
 // `hermes --version` reports.
 const HERMES_RELEASE_REPOSITORY = "NousResearch/hermes-agent";
-// `hermes update` pulls and reinstalls a git checkout in place, so it is only
-// offered when the binary (or the launcher it sits behind) is in one.
-// Nix, Docker, apt and pip installs stay manual; `hermes update` refuses them.
-// `--yes` accepts its config-migration and stash-restore prompts, since the
-// runner has no terminal to answer them. It runs with the instance's
-// environment so a custom `HERMES_HOME` is the one migrated.
+// `hermes update` is offered only for git checkouts (Nix, Docker, apt and pip installs are
+// refused). `--yes` answers its prompts, and the instance's environment selects the `HERMES_HOME`
+// it migrates.
 const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
   resolve: Effect.fn("HermesDriver.resolve")(function* (context) {
     const manual = makeManualOnlyProviderMaintenanceCapabilities({

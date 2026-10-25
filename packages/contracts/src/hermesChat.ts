@@ -1,14 +1,7 @@
 /**
- * Hermes chat contract: read-only views of Hermes gateway conversations.
- *
- * Hermes's messaging gateway (Discord, Telegram, Slack, ...) keeps every
- * conversation in the profile's session store. A conversation is identified
- * by its gateway `sessionKey` (channel plus user, a thread, or a DM), which
- * outlives the Hermes sessions it spans: resets and compression rotate the
- * session id under the same key. Transcripts are read on demand and never
- * copied into T3 Code's own state.
- *
- * @module hermesChat
+ * Read-only views of Hermes gateway conversations, identified by gateway `sessionKey`, which
+ * outlives the session ids that resets and compression rotate. Transcripts are read on demand and
+ * never copied into T3 Code's state.
  */
 import * as Schema from "effect/Schema";
 

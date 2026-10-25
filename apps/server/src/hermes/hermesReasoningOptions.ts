@@ -1,17 +1,7 @@
 /**
- * The Hermes reasoning-effort selector: what the composer offers, and what
- * picking a level does.
- *
- * Reading and writing are deliberately split across two moments. The provider
- * snapshot builds the descriptor (levels for the model, plus whatever
- * `config.yaml` currently resolves to), and the adapter applies a selection by
- * writing the per-model override back to `config.yaml`. Hermes reads that file
- * when its process starts and never re-reads it for a live session, so the
- * write happens just before the adapter spawns Hermes and a level lands on the
- * next session — there is no live channel for it, and nothing here should
- * suggest otherwise.
- *
- * @module hermesReasoningOptions
+ * The Hermes reasoning-effort selector. The snapshot offers levels and the current `config.yaml`
+ * value; the adapter writes the per-model override before spawning Hermes, which reads it only at
+ * startup.
  */
 import type { ModelCapabilities, ProviderOptionSelection } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
@@ -75,11 +65,9 @@ export function readHermesReasoningContext(
 
 /**
  * Capabilities for one Hermes model.
- *
- * No ladder means no descriptor: an unknown model, an unreadable models.dev
- * cache, or a model Hermes cannot configure reasoning for all render as a
- * composer with no reasoning control, rather than one whose levels might not
- * land.
+ * No ladder means no descriptor: an unknown model, an unreadable models.dev cache, or a model
+ * Hermes cannot configure reasoning for all render as a composer with no reasoning control, rather
+ * than one whose levels might not land.
  */
 export function buildHermesModelCapabilities(input: {
   readonly slug: string;
@@ -125,12 +113,10 @@ export function buildHermesModelCapabilities(input: {
 }
 
 /**
- * Resolves a stored selection to the level to write, or `undefined` when there
- * is nothing to do.
- *
- * Selections are sticky per provider, so one made against a different model can
- * arrive for a model that does not offer it. Validating against the model's own
- * ladder keeps a stale pick from writing a level Hermes would reject.
+ * Resolves a stored selection to the level to write, or `undefined` when there is nothing to do.
+ * Selections are sticky per provider, so one made against a different model can arrive for a model
+ * that does not offer it. Validating against the model's own ladder keeps a stale pick from writing
+ * a level Hermes would reject.
  */
 export function resolveHermesReasoningSelection(input: {
   readonly slug: string;
@@ -151,17 +137,9 @@ export function resolveHermesReasoningSelection(input: {
 }
 
 /**
- * Applies a composer selection to Hermes's config.
- *
- * Returns the level now recorded for the model, or `undefined` when the
- * selection said nothing about this model and the config was left alone. The
- * caller tracks that value to know when a running session needs its agent
- * rebuilt — see `forceReapply` in `applyHermesAcpModelSelection`.
- *
- * Never fails the caller: this edits a file T3 Code does not own, and a turn
- * must still run when the user's Hermes config is unwritable or hand-broken.
- * A write that failed also reports `undefined`, so nothing downstream believes
- * a level landed that did not.
+ * Applies a composer selection to Hermes's config and returns the level now recorded, or
+ * `undefined` if untouched. Never fails a turn on an unwritable config; a failed write also reports
+ * `undefined`.
  */
 export const applyHermesReasoningSelection = Effect.fn(
   "hermesReasoningOptions.applyHermesReasoningSelection",

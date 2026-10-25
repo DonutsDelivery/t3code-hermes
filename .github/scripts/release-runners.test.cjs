@@ -1,8 +1,7 @@
-// The fork's release path may only ask for GitHub-hosted runners. A job that
-// requests a label nothing here serves (upstream's Blacksmith pools) never
-// fails: it queues for a day while release.yml's `queue: max` concurrency
-// holds every later nightly behind it. Upstream moves jobs onto Blacksmith in
-// merges that apply cleanly, so nothing else notices before a release hangs.
+// The fork's release path may only ask for GitHub-hosted runners. A job that requests a label
+// nothing here serves (upstream's Blacksmith pools) never fails: it queues for a day while
+// release.yml's `queue: max` concurrency holds every later nightly behind it. Upstream moves jobs
+// onto Blacksmith in merges that apply cleanly, so nothing else notices before a release hangs.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");

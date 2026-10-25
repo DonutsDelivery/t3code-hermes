@@ -1,14 +1,6 @@
 /**
- * Hands a prompt template to the composer from a route that does not have one.
- *
- * Full-page views like Hermes Tasks live outside the chat layout, so the
- * composer is unmounted while they are open and there is no ref to call. This
- * holds one pending template until a composer appears and claims it, which is
- * why it is a slot rather than an event: the request is made before the
- * listener exists.
- *
- * Only the most recent request survives — pressing "New task…" twice should
- * prefill once, not queue two.
+ * Hands a prompt template to a composer that isn't mounted yet (full-page views like Hermes Tasks).
+ * A slot, not an event, since the request precedes the listener; only the latest request survives.
  */
 const TEMPLATE_READY_EVENT = "t3code:composer-template-ready";
 

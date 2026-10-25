@@ -1,16 +1,7 @@
 /**
- * These tests are the tripwire for a Hindsight upgrade.
- *
- * Every case answers with a fixture transcribed from Hindsight's own OpenAPI
- * document and query source (see `hindsightFixtures.ts`). If Hindsight renames
- * `fact_type`, stops comma-joining `entities`, or moves the recall score, the
- * decoders here fail loudly rather than the Memory tab quietly rendering blank
- * rows.
- *
- * The rest of the suite pins the two states the panel has to get right: a
- * Hindsight that was never configured, and one that is configured but not
- * answering. Those are different sentences with different next actions, so
- * they must not collapse into one generic error.
+ * Tripwire for Hindsight upgrades: fixtures from its OpenAPI document make renamed or reshaped
+ * fields fail here. Also pins never-configured vs. not-answering, which have different next
+ * actions.
  */
 import { describe, expect, it } from "@effect/vitest";
 import { HindsightBankId } from "@t3tools/contracts";

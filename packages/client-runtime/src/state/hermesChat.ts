@@ -1,11 +1,8 @@
 // @effect-diagnostics globalDate:off -- Display-only relative ages and clock labels for transcript rows.
 /**
- * Presentation for the read-only Hermes conversation surface, shared by every
- * client: what a conversation is called, how its platform reads, and how a
- * transcript groups into bubbles. No atoms here; each client reads through its
- * own `serverEnvironment.hermesChatList` / `hermesChatTranscript` queries.
- *
- * @module state/hermesChat
+ * Presentation for the read-only Hermes conversation surface: titles, platform labels, and
+ * transcript bubble grouping. No atoms; clients query `hermesChatList`/`hermesChatTranscript`
+ * themselves.
  */
 import type {
   HermesChatAvailability,

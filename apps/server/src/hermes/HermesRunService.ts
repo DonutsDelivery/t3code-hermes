@@ -1,30 +1,8 @@
 /**
- * HermesRunService — mirrors Hermes background runs into threads.
- *
- * Hermes runs agents on its own: a webhook route per incoming delivery, a cron
- * job per firing, in any of its profiles. This service discovers those sources
- * from Hermes's config, lets the user switch on the ones that should produce
- * threads (and pick their project), and tails each switched-on source's runs
- * from the profile's `state.db` into ordinary threads: the transcript with its
- * tool calls, a running turn while Hermes works, the pull request the run
- * opened, and a finished turn when it ends.
- *
- * A run has no T3 run of its own: Hermes already did the work. Its thread is
- * created and stamped with `hermesRun` through orchestrator commands, and its
- * transcript lands as run-less turn items written straight to the event sink,
- * like imported history. Ids derive from Hermes row ids, so replays write
- * nothing new and cursors live in memory. Nothing is checkpointed: the run
- * worked in its own checkout, not the project's. `hermesRun.live` is the only
- * liveness signal, so a live run is never interrupted by provider recovery.
- *
- * Replies start a fresh Hermes session in the instance's own Hermes home:
- * Hermes cannot reopen webhook or cron sessions over ACP. The thread's history
- * is marked imported, so V2 hands the mirrored transcript to that session.
- *
- * Cost: one settings read per tick with nothing switched on; otherwise a few
- * indexed reads per switched-on source every 30s, every 5s while a run is live.
- *
- * @module HermesRunService
+ * Mirrors Hermes background runs (webhook deliveries, cron firings) from opted-in sources into
+ * threads, as run-less turn items written to the event sink. Ids derive from Hermes row ids, so
+ * replays are no-ops; `hermesRun.live` is the only liveness signal. Replies start a fresh Hermes
+ * session. Polls every 30s, 5s while a run is live.
  */
 import {
   CommandId,

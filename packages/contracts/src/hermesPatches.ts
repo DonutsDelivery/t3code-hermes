@@ -1,16 +1,7 @@
 /**
- * Hermes patches contract.
- *
- * The fork carries a few patches against Hermes Agent itself (`infra/hermes`)
- * for behaviour T3 Code depends on. They are applied to the user's own git
- * checkout of Hermes, so an update can drop one or leave it no longer fitting
- * without anything saying so. The Patches tab shows where each one stands and
- * applies or removes it.
- *
- * Only patches the environment itself ships can be applied: clients name a
- * patch by id and never send patch content.
- *
- * @module hermesPatches
+ * Hermes patches contract: the fork's patches against the user's Hermes checkout (`infra/hermes`),
+ * whose status the Patches tab shows. Clients name a shipped patch by id and never send patch
+ * content.
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -34,13 +25,9 @@ export const HermesPatchState = Schema.Literals(["applied", "notApplied", "doesN
 export type HermesPatchState = typeof HermesPatchState.Type;
 
 /**
- * Why a `doesNotApply` patch does not fit, which decides what fixes it:
- * - `hermesTooOld`: the checkout is older than the newest version's Hermes
- *   commit. Updating Hermes fixes it.
- * - `awaitingPatchUpdate`: Hermes has moved past every version. Only a T3 Code
- *   update carrying a rebased version fixes it.
- * - `localChanges`: the checkout has uncommitted edits in files the patch
- *   touches. Neither update helps until they are committed or discarded.
+ * Why a `doesNotApply` patch does not fit: `hermesTooOld` (update Hermes), `awaitingPatchUpdate`
+ * (needs a T3 Code update with a rebased version), or `localChanges` (commit or discard edits in
+ * its files).
  */
 export const HermesPatchMisfitReason = Schema.Literals([
   "hermesTooOld",
@@ -75,13 +62,9 @@ export const HermesPatchesAvailability = Schema.Literals([
 export type HermesPatchesAvailability = typeof HermesPatchesAvailability.Type;
 
 /**
- * The Hermes gateway serving the environment's Hermes home. A gateway is a
- * long-running process: it keeps the code it imported at startup, so patches
- * reach it only after a restart.
- *
- * - `upToDate`: started after the patched files last changed.
- * - `outdated`: started before, so it still runs the code from then.
- * - `restarting`: this server is restarting it now.
+ * The gateway serving the Hermes home, which runs the code it imported at startup: `upToDate`
+ * (started after patched files changed), `outdated`, or `restarting` (this server is restarting
+ * it).
  */
 export const HermesGatewayState = Schema.Literals(["upToDate", "outdated", "restarting"]);
 export type HermesGatewayState = typeof HermesGatewayState.Type;

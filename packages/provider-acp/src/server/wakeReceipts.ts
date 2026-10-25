@@ -2,16 +2,9 @@
 const SEEN_LIMIT = 1024;
 
 /**
- * Receipt ids an agent attaches to a wake notice, for agents that settle a
- * finished result only once a prompt hands its ids back (Hermes
- * `notificationIds`). A wake becomes a queued app message whose run prompts
- * with the notice text, so ids wait here, matched by that text, until the
- * wake turn prompts.
- *
- * `admit` drops a re-sent notice while its ids are queued or prompting. Once
- * the wake prompt settles, `forget` reopens them whatever the outcome: the
- * stop reason does not say whether the agent settled them, and an agent never
- * re-sends a receipt it settled, so a later notice is a real redelivery.
+ * Receipt ids a wake notice carries (Hermes `notificationIds`), held by notice text until the wake
+ * turn prompts. `admit` drops re-sent notices while queued or prompting; `forget` reopens them once
+ * the prompt settles.
  */
 export class AcpWakeReceipts {
   private readonly seen = new Set<string>();

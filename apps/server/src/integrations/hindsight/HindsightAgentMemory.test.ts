@@ -1,10 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - the fake installer writes agent config synchronously.
 /**
- * Agent memory runs Hindsight's installer against real files in a temp home,
- * with the installer itself faked: it writes the same `coding-agents` hook
- * markers the real one does, so detection is exercised for real. The cases
- * pin the promises the toggle makes — it wires what is present, only acts on
- * drift, and switching it off undoes only what T3 Code did.
+ * Agent memory runs Hindsight's installer against real files in a temp home, with the installer
+ * itself faked: it writes the same `coding-agents` hook markers the real one does, so detection is
+ * exercised for real. The cases pin the promises the toggle makes — it wires what is present, only
+ * acts on drift, and switching it off undoes only what T3 Code did.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
