@@ -141,13 +141,17 @@ describe("threadIsMonitoring", () => {
     expect(threadIsMonitoring({ ...settled, settledOverride: "settled" as const })).toBe(false);
   });
 
-  it("monitors provider monitors only when nothing else holds the thread", () => {
-    const monitor = { taskId: "monitor", kind: "monitor" as const };
+  it("monitors awaited provider monitors only when nothing else holds the thread", () => {
+    const monitor = { taskId: "monitor", kind: "monitor" as const, awaited: true as const };
+    const watchdog = { taskId: "watchdog", kind: "monitor" as const };
     const command = { taskId: "dev-server", kind: "command" as const };
     const subagent = { taskId: "subagent", kind: "subagent" as const };
     const parked = { ...thread("parked", false), runtime: runtime("idle") };
     expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [monitor, command] })).toBe(
       true,
+    );
+    expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [watchdog, command] })).toBe(
+      false,
     );
     expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [monitor, subagent] })).toBe(
       false,
