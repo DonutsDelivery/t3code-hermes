@@ -363,3 +363,76 @@ export function readHermesChatTranscript(
     return { conversation, messages, truncated: rows.length > limit };
   });
 }
+
+/**
+ * Platform channel ids a session's `origin_json` names the chat by: `chat_id`
+ * for a group or DM, `thread_id` plus `parent_chat_id` for a thread.
+ */
+function originChannelIds(originJson: string): readonly string[] {
+  try {
+    const origin: unknown = JSON.parse(originJson || "null");
+    if (typeof origin !== "object" || origin === null) return [];
+    const record = origin as Record<string, unknown>;
+    const ids = [record["chat_id"], record["thread_id"], record["parent_chat_id"]];
+    return [
+      ...new Set(ids.filter((id): id is string => typeof id === "string" && id.trim() !== "")),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export interface HermesChatChannelsRow {
+  readonly sessionKey: string;
+  readonly platform: string;
+  /** Platform channel ids naming the chat: chat, thread, and parent chat. */
+  readonly channelIds: readonly string[];
+  /** Seconds. */
+  readonly lastActivityAt: number;
+}
+
+/**
+ * Conversations active at or after `sinceSeconds` with the channel ids their
+ * newest keyed session names, newest first. Thread hubs match conversations to
+ * their channels through this reader; the list and transcript readers do not
+ * surface channel ids.
+ */
+export function readHermesChatChannels(
+  dbPath: string,
+  options: { readonly sinceSeconds: number },
+): readonly HermesChatChannelsRow[] | null {
+  return withStateDb(dbPath, (db) => {
+    const aggregates = db
+      .prepare(
+        `${conversationSessions("")}
+         SELECT conversation.session_key AS session_key,
+           MAX(COALESCE(s.last_activity_at, s.ended_at, s.started_at)) AS activity
+         FROM conversation JOIN sessions AS s ON s.id = conversation.id
+         GROUP BY conversation.session_key
+         HAVING activity >= ?
+         ORDER BY activity DESC`,
+      )
+      .all(options.sinceSeconds) as unknown as ReadonlyArray<Record<string, unknown>>;
+    return aggregates.flatMap((row) => {
+      const sessionKey = text(row["session_key"]).trim();
+      const lastActivityAt = seconds(row["activity"]);
+      if (!sessionKey || lastActivityAt === null) return [];
+      const newest = db
+        .prepare(
+          `SELECT source, origin_json FROM sessions
+           WHERE session_key = ? ORDER BY started_at DESC LIMIT 1`,
+        )
+        .get(sessionKey) as Record<string, unknown> | undefined;
+      const platform = text(newest?.["source"]).trim();
+      if (!platform) return [];
+      return [
+        {
+          sessionKey,
+          platform,
+          channelIds: originChannelIds(text(newest?.["origin_json"])),
+          lastActivityAt,
+        },
+      ];
+    });
+  });
+}

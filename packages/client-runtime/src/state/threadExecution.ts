@@ -419,6 +419,7 @@ export function notificationChildThreadId(
     case "monitor":
     case "background_task":
     case "system":
+    case "hermes_chat":
       return undefined;
     default:
       source satisfies never;

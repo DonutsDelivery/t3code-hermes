@@ -4,6 +4,7 @@ import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
+import { useAtomValue } from "@effect/atom-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -39,6 +40,7 @@ import {
   EyeIcon,
   GitBranchIcon,
   MessageCircleQuestionIcon,
+  MessagesSquareIcon,
   PinIcon,
   PinOffIcon,
   ShieldQuestionIcon,
@@ -100,6 +102,7 @@ import {
 } from "../ThreadStatusIndicators";
 import { resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
 import { useThreadShell } from "../../state/entities";
+import { serverEnvironment } from "../../state/server";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { ThreadStatusRing } from "../ThreadStatusRing";
@@ -1051,6 +1054,26 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <TooltipPopup side="top">Unsent draft</TooltipPopup>
     </Tooltip>
   ) : null;
+  const hubName = useAtomValue(
+    serverEnvironment.hermesHubNameAtom(thread.environmentId, thread.id),
+  );
+  const hubIndicator =
+    hubName === null ? null : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              role="img"
+              aria-label={`Hermes hub: ${hubName}`}
+              className="inline-flex shrink-0 items-center text-muted-foreground/65"
+            />
+          }
+        >
+          <MessagesSquareIcon aria-hidden className="size-3" />
+        </TooltipTrigger>
+        <TooltipPopup side="top">Hermes hub: {hubName}</TooltipPopup>
+      </Tooltip>
+    );
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
   const pinIndicator = showPin ? (
@@ -1128,6 +1151,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </span>
             {draftIndicator}
             {title}
+            {hubIndicator}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1285,6 +1309,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : null}
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
+              {hubIndicator}
               {pinIndicator}
               {props.projectDisplayName ? (
                 <span

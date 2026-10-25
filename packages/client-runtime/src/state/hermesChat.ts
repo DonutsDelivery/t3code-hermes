@@ -11,6 +11,7 @@ import type {
   HermesChatAvailability,
   HermesChatConversation,
   HermesChatMessage,
+  OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -31,6 +32,18 @@ export function hermesChatPlatformLabel(platform: string): string {
   return (
     PLATFORM_LABELS[platform] ??
     platform.replace(/[_-]+/g, " ").replace(/^\w/, (first) => first.toUpperCase())
+  );
+}
+
+/**
+ * Turn items cannot be deleted, so the server takes a detached conversation's
+ * card down by rewriting it as `cancelled`. Every timeline leaves it out.
+ */
+export function isDetachedHermesChatCard(item: OrchestrationV2TurnItem): boolean {
+  return (
+    item.type === "notification" &&
+    item.source.kind === "hermes_chat" &&
+    item.outcome === "cancelled"
   );
 }
 

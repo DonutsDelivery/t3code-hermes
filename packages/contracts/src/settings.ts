@@ -948,9 +948,30 @@ export const PaperclipSettings = Schema.Struct({
 });
 export type PaperclipSettings = typeof PaperclipSettings.Type;
 
+/**
+ * An external thread hub: one pinned thread that collects activity from
+ * Discord channels the user names. `threadId` is null while the hub has no
+ * thread to post into; such a hub links nothing and posts nothing.
+ */
+export const HermesHubSettings = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  threadId: Schema.NullOr(ThreadId),
+  /** Platform channel ids whose conversations belong to this hub. */
+  channels: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  /** Whether new conversations in the channels link themselves to the hub. */
+  autoLink: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Most conversations each channel-linked hub thread follows, newest first. */
+  autoLinkCap: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(5))),
+});
+export type HermesHubSettings = typeof HermesHubSettings.Type;
+
 export const IntegrationSettings = Schema.Struct({
   hindsight: HindsightSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   paperclip: PaperclipSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  hermesHubs: Schema.Array(HermesHubSettings).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type IntegrationSettings = typeof IntegrationSettings.Type;
 
@@ -1751,6 +1772,9 @@ export const ServerSettingsPatch = Schema.Struct({
           autoRefreshSeconds: Schema.optionalKey(NonNegativeInt),
         }),
       ),
+      // Whole-array replacement: settings deep-merge replaces arrays, and each
+      // hub is saved as the user sees it, so a deleted hub cannot linger.
+      hermesHubs: Schema.optionalKey(Schema.Array(HermesHubSettings)),
     }),
   ),
   /**

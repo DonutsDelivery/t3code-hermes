@@ -179,6 +179,7 @@ import * as HermesSkillsService from "./hermes/HermesSkillsService.ts";
 import * as HermesMemoryService from "./hermes/HermesMemoryService.ts";
 import * as HermesRunService from "./hermes/HermesRunService.ts";
 import * as HermesChatService from "./hermes/HermesChatService.ts";
+import * as HermesChatHubService from "./hermes/HermesChatHubService.ts";
 import * as HermesPatchService from "./hermes/HermesPatchService.ts";
 import * as HindsightAgentMemory from "./integrations/hindsight/HindsightAgentMemory.ts";
 import * as HindsightService from "./integrations/hindsight/HindsightService.ts";
@@ -647,6 +648,51 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // the service the hermes* RPC handlers call. These are the same layer
   // references the orchestrator uses, so memoization shares one instance.
   HermesRunService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        RuntimeLayer.layerEventSink,
+        ProjectionStoreV2.layer,
+        TurnItemPositionStore.layer,
+      ),
+    ),
+  ),
+  // Fork: thread hubs for linked Hermes gateway conversations, on the same
+  // layer references so memoization shares one instance.
+  HermesChatHubService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        RuntimeLayer.layerEventSink,
+        ProjectionStoreV2.layer,
+        TurnItemPositionStore.layer,
+      ),
+    ),
+  ),
+  // Fork: starts the Hermes watchers. The same layer objects as the bare
+  // layers above, so memoization means each `start` runs the served instance.
+  // HermesRunService.start had no call site before this: the run watcher was
+  // parked and dead in production.
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* HermesRunService.HermesRunService;
+      yield* service.start();
+    }),
+  ).pipe(
+    Layer.provideMerge(HermesRunService.layer),
+    Layer.provide(
+      Layer.mergeAll(
+        RuntimeLayer.layerEventSink,
+        ProjectionStoreV2.layer,
+        TurnItemPositionStore.layer,
+      ),
+    ),
+  ),
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const service = yield* HermesChatHubService.HermesChatHubService;
+      yield* service.start();
+    }),
+  ).pipe(
+    Layer.provideMerge(HermesChatHubService.layer),
     Layer.provide(
       Layer.mergeAll(
         RuntimeLayer.layerEventSink,

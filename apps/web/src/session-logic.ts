@@ -1,5 +1,6 @@
 import type { ThreadStructure, ThreadStructureRuntime } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { isDetachedHermesChatCard } from "@t3tools/client-runtime/state/hermesChat";
 import {
   type AssetResource,
   type OrchestrationV2Checkpoint,
@@ -678,6 +679,7 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
     if (turnItemIsWorkspacePreparation(item)) continue;
     if (item.type === "todo_list" || item.type === "checkpoint") continue;
     if (item.type === "user_message" && foldedAnswerMessageIds.has(item.messageId)) continue;
+    if (isDetachedHermesChatCard(item)) continue;
     const createdAt = projectedItemCreatedAt(row);
     const attempt = resolveAttempt(item);
     const attemptMetadata = attempt === undefined ? {} : { attempt };

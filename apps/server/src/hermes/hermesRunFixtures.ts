@@ -167,6 +167,8 @@ export interface HermesGatewaySessionFixture {
   readonly title?: string | null;
   readonly displayName?: string | null;
   readonly userName?: string;
+  /** Overrides the default origin JSON, e.g. to name platform channel ids. */
+  readonly originJson?: string;
 }
 
 /** Inserts a session the way the messaging gateway writes one. */
@@ -186,11 +188,12 @@ export function insertHermesGatewaySession(
     keyed ? "thread" : null,
     keyed ? (session.displayName ?? "Guild / #general / help") : null,
     keyed
-      ? JSON.stringify({
-          platform: "discord",
-          chat_type: "thread",
-          user_name: session.userName ?? "Yato",
-        })
+      ? (session.originJson ??
+          JSON.stringify({
+            platform: "discord",
+            chat_type: "thread",
+            user_name: session.userName ?? "Yato",
+          }))
       : null,
     session.parentSessionId ?? null,
     session.startedAt,

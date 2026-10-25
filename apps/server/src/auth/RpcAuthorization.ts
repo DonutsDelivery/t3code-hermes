@@ -119,6 +119,11 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.hermesRunSourceSet]: AuthOrchestrationOperateScope,
   [WS_METHODS.hermesChatList]: AuthOrchestrationReadScope,
   [WS_METHODS.hermesChatTranscript]: AuthOrchestrationReadScope,
+  [WS_METHODS.hermesChatLinks]: AuthOrchestrationReadScope,
+  // Linking a conversation changes a thread's timeline, which is part of
+  // operating threads.
+  [WS_METHODS.hermesChatLink]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hermesChatUnlink]: AuthOrchestrationOperateScope,
   [WS_METHODS.hermesPatchList]: AuthOrchestrationReadScope,
   // Patching rewrites the Hermes install itself, like a provider update.
   [WS_METHODS.hermesPatchApply]: AuthOrchestrationOperateScope,

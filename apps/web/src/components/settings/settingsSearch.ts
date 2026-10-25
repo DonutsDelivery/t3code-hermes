@@ -756,6 +756,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "hermes-hubs",
+    title: "External thread hubs",
+    to: "/settings/integrations",
+    searchTerms: ["hermes hubs external thread hub discord conversations pinned thread gateway"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
+    id: "hermes-hubs-channels",
+    title: "Hub channels",
+    to: "/settings/integrations",
+    targetId: "hermes-hubs",
+    searchTerms: ["hermes hub discord channel ids auto link conversations cap"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "hermes-runs",
     title: "Hermes runs",
     to: "/settings/integrations",

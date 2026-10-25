@@ -4,6 +4,7 @@ import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings"
 import { ScopedSwitch } from "./ScopedSwitch";
 import { DeviceHostsSettings } from "./DeviceHostsSettings";
 import { HermesRunsSettingsSection } from "./HermesRunsSettings";
+import { HermesHubsSettingsSection } from "./HermesHubsSettings";
 import { MemorySettingsSection } from "./MemorySettings";
 import { PaperclipSettingsSection } from "./PaperclipSettings";
 import { EasDeviceHostsSettings } from "./EasDeviceHostsSettings";
@@ -1648,6 +1649,7 @@ export function IntegrationsSettingsPanel() {
       <MemorySettingsSection />
       <PaperclipSettingsSection />
       <HermesRunsSettingsSection />
+      <HermesHubsSettingsSection />
     </SettingsPageContainer>
   );
 }

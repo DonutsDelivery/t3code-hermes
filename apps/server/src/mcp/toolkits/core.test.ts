@@ -38,6 +38,7 @@ import * as ServerConfig from "../../config.ts";
 import * as ProviderAdapterRegistry from "../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as HermesChatHubService from "../../hermes/HermesChatHubService.ts";
 import * as HermesChatService from "../../hermes/HermesChatService.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
@@ -609,9 +610,101 @@ it.effect("a read-only client lists and reads Hermes gateway conversations", () 
               }),
           }),
         ),
+        Layer.provide(Layer.mock(HermesChatHubService.HermesChatHubService)({})),
+        Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
       ),
     ),
   ),
+);
+
+const hubThreadId = ThreadId.make("hub-thread");
+const hubLinks: Array<{ readonly sessionKey: string; readonly threadId: ThreadId }> = [];
+const layerHubToolkit = McpHttpServer.layerHermesChatToolkit.pipe(
+  Layer.provideMerge(McpServer.McpServer.layer),
+  Layer.provide(Layer.mock(HermesChatService.HermesChatService)({})),
+  Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
+  Layer.provide(
+    Layer.mock(HermesChatHubService.HermesChatHubService)({
+      listHubs: Effect.succeed({
+        hubs: [
+          {
+            id: "hub-1",
+            name: "Ops",
+            threadId: hubThreadId,
+            channels: ["123"],
+            autoLink: true,
+            autoLinkCap: 5,
+            linkedCount: 0,
+          },
+          {
+            id: "hub-2",
+            name: "Empty",
+            threadId: null,
+            channels: [],
+            autoLink: false,
+            autoLinkCap: 5,
+            linkedCount: 0,
+          },
+        ],
+      }),
+      link: (input) =>
+        Effect.sync(() => {
+          hubLinks.push(input);
+          return { links: [] };
+        }),
+    }),
+  ),
+);
+
+it.effect("a read-only client lists hubs but cannot link conversations", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const call = (name: string, args: Record<string, unknown>) =>
+      server
+        .callTool({ name, arguments: args })
+        .pipe(
+          Effect.provideService(
+            McpInvocationContext.McpInvocationContext,
+            clientScope("read-only"),
+          ),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    const listed = yield* call("hermes_hub_list", {});
+    expect(listed.structuredContent).toMatchObject({ hubs: [{ id: "hub-1" }, { id: "hub-2" }] });
+    const linked = yield* call("hermes_chat_link", {
+      sessionKey: "agent:main:discord:1",
+      hub: "Ops",
+    });
+    expect(declaredFailure(linked)).toMatchObject({ code: "capability_denied" });
+  }).pipe(Effect.provide(layerHubToolkit)),
+);
+
+it.effect("links a conversation to a hub's thread by name and refuses a hub without one", () =>
+  Effect.gen(function* () {
+    hubLinks.length = 0;
+    const server = yield* McpServer.McpServer;
+    const call = (name: string, args: Record<string, unknown>) =>
+      server
+        .callTool({ name, arguments: args })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, clientScope("auto")),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+    const linked = yield* call("hermes_chat_link", {
+      sessionKey: "agent:main:discord:1",
+      hub: "ops",
+    });
+    expect(linked.structuredContent).toEqual({ links: [] });
+    expect(hubLinks).toEqual([{ sessionKey: "agent:main:discord:1", threadId: hubThreadId }]);
+    const empty = yield* call("hermes_chat_link", {
+      sessionKey: "agent:main:discord:1",
+      hub: "hub-2",
+    });
+    expect(declaredFailure(empty)).toMatchObject({ code: "target_required" });
+    const noCaller = yield* call("hermes_chat_link", { sessionKey: "agent:main:discord:1" });
+    expect(noCaller.isError).toBe(true);
+    expect(hubLinks).toHaveLength(1);
+  }).pipe(Effect.provide(layerHubToolkit)),
 );
 
 it.effect("refuses act-as-caller tools to a client caller", () =>

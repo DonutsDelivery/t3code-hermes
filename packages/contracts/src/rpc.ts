@@ -363,6 +363,9 @@ import {
   HermesChatListResult,
   HermesChatTranscript,
   HermesChatTranscriptInput,
+  HermesChatLinkInput,
+  HermesChatLinksResult,
+  HermesChatUnlinkInput,
 } from "./hermesChat.ts";
 import {
   HermesGatewayRestartInput,
@@ -586,6 +589,9 @@ export const WS_METHODS = {
   hermesRunSourceSet: "hermes.runSourceSet",
   hermesChatList: "hermes.chatList",
   hermesChatTranscript: "hermes.chatTranscript",
+  hermesChatLinks: "hermes.chatLinks",
+  hermesChatLink: "hermes.chatLink",
+  hermesChatUnlink: "hermes.chatUnlink",
   hermesPatchList: "hermes.patchList",
   hermesPatchApply: "hermes.patchApply",
   hermesPatchRevert: "hermes.patchRevert",
@@ -1077,6 +1083,27 @@ const WsHermesChatListRpc = Rpc.make(WS_METHODS.hermesChatList, {
 const WsHermesChatTranscriptRpc = Rpc.make(WS_METHODS.hermesChatTranscript, {
   payload: HermesChatTranscriptInput,
   success: HermesChatTranscript,
+  error: EnvironmentAuthorizationError,
+});
+
+/** Every Hermes conversation link that currently holds, manual and hub-derived. */
+const WsHermesChatLinksRpc = Rpc.make(WS_METHODS.hermesChatLinks, {
+  payload: Schema.Struct({}),
+  success: HermesChatLinksResult,
+  error: EnvironmentAuthorizationError,
+});
+
+/** Links a gateway conversation's card into a thread. */
+const WsHermesChatLinkRpc = Rpc.make(WS_METHODS.hermesChatLink, {
+  payload: HermesChatLinkInput,
+  success: HermesChatLinksResult,
+  error: EnvironmentAuthorizationError,
+});
+
+/** Detaches a gateway conversation's card; every thread's when threadId is omitted. */
+const WsHermesChatUnlinkRpc = Rpc.make(WS_METHODS.hermesChatUnlink, {
+  payload: HermesChatUnlinkInput,
+  success: HermesChatLinksResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -2191,6 +2218,9 @@ export const HermesWsRpcGroup = RpcGroup.make(
   WsHermesRunSourceSetRpc,
   WsHermesChatListRpc,
   WsHermesChatTranscriptRpc,
+  WsHermesChatLinksRpc,
+  WsHermesChatLinkRpc,
+  WsHermesChatUnlinkRpc,
   WsHermesPatchListRpc,
   WsHermesPatchApplyRpc,
   WsHermesPatchRevertRpc,

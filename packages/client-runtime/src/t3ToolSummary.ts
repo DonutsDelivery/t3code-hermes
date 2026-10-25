@@ -349,6 +349,23 @@ export function summarizeT3ToolCalls(
         quantity(countEntities(entityIds("sessionKey")), "Hermes conversation"),
       );
       break;
+    case "hermes-hub-list":
+      label = phrase("Listed", "list", `Hermes thread hubs ${times}`);
+      break;
+    case "hermes-chat-link":
+      label = phrase(
+        "Linked",
+        "link",
+        quantity(countEntities(entityIds("sessionKey")), "Hermes conversation"),
+      );
+      break;
+    case "hermes-chat-unlink":
+      label = phrase(
+        "Unlinked",
+        "unlink",
+        quantity(countEntities(entityIds("sessionKey")), "Hermes conversation"),
+      );
+      break;
     case "attachment-prepare":
       label = phrase(
         "Prepared",

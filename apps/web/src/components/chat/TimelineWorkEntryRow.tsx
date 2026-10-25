@@ -46,6 +46,7 @@ import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
 import { SubagentNotificationLink } from "./V2LifecycleRow";
+import { HermesChatCardRow } from "../hermes/HermesChatCardRow";
 import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
@@ -150,6 +151,23 @@ type WorkEntryRowProps = {
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
   const ctx = use(TimelineRowCtx);
   const item = props.workEntry.projectedItem?.item;
+  if (item?.type === "notification" && item.source.kind === "hermes_chat") {
+    return (
+      <HermesChatCardRow
+        threadRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
+        sessionKey={item.source.sessionKey}
+        summary={item.summary}
+        detail={item.detail}
+        timestamp={
+          <TimelineRowTimestamp
+            createdAt={props.workEntry.createdAt}
+            timestampFormat={ctx.timestampFormat}
+            alwaysVisible
+          />
+        }
+      />
+    );
+  }
   const childThreadId =
     item?.type === "notification" ? notificationChildThreadId(item.source) : undefined;
   if (item?.type !== "notification" || childThreadId === undefined) {

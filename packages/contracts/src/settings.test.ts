@@ -408,3 +408,42 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+describe("Hermes hub settings", () => {
+  it("defaults to no hubs and fills each hub's own defaults", () => {
+    expect(decodeServerSettings({}).integrations.hermesHubs).toEqual([]);
+    const decoded = decodeServerSettings({
+      integrations: { hermesHubs: [{ id: "gaming", name: "Gaming", threadId: null }] },
+    });
+    expect(decoded.integrations.hermesHubs).toEqual([
+      {
+        id: "gaming",
+        name: "Gaming",
+        threadId: null,
+        channels: [],
+        autoLink: true,
+        autoLinkCap: 5,
+      },
+    ]);
+  });
+
+  it("replaces the hub array wholesale in a settings patch", () => {
+    const patch = decodeServerSettingsPatch({
+      integrations: {
+        hermesHubs: [
+          { id: "ops", name: "Ops", threadId: "thread-1", channels: ["111"], autoLink: false },
+        ],
+      },
+    });
+    expect(patch.integrations?.hermesHubs).toEqual([
+      {
+        id: "ops",
+        name: "Ops",
+        threadId: "thread-1",
+        channels: ["111"],
+        autoLink: false,
+        autoLinkCap: 5,
+      },
+    ]);
+  });
+});

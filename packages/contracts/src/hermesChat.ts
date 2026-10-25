@@ -16,6 +16,7 @@ import {
   ForwardCompatibleArray,
   IsoDateTime,
   NonNegativeInt,
+  ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 
@@ -104,3 +105,57 @@ export const HermesChatTranscript = Schema.Struct({
   truncated: Schema.Boolean,
 });
 export type HermesChatTranscript = typeof HermesChatTranscript.Type;
+
+/**
+ * One linked Hermes gateway conversation: the thread whose timeline holds its
+ * card, and why it is there.
+ */
+export const HermesChatLinkEntry = Schema.Struct({
+  sessionKey: TrimmedNonEmptyString,
+  /** The thread the conversation's card appears in. */
+  threadId: ThreadId,
+  /** `manual` from a link action; `hub` derived from a hub's channels. */
+  source: Schema.Literals(["manual", "hub"]),
+  /** Null for derived hub links, which every pass recomputes. */
+  linkedAt: Schema.NullOr(IsoDateTime),
+});
+export type HermesChatLinkEntry = typeof HermesChatLinkEntry.Type;
+
+export const HermesChatLinkInput = Schema.Struct({
+  sessionKey: TrimmedNonEmptyString,
+  threadId: ThreadId,
+});
+export type HermesChatLinkInput = typeof HermesChatLinkInput.Type;
+
+/** Omit `threadId` to detach every thread's link for the conversation. */
+export const HermesChatUnlinkInput = Schema.Struct({
+  sessionKey: TrimmedNonEmptyString,
+  threadId: Schema.optional(ThreadId),
+});
+export type HermesChatUnlinkInput = typeof HermesChatUnlinkInput.Type;
+
+export const HermesChatLinksResult = Schema.Struct({
+  /** Every link that currently holds, newest conversation activity first. */
+  links: ForwardCompatibleArray(HermesChatLinkEntry),
+});
+export type HermesChatLinksResult = typeof HermesChatLinksResult.Type;
+
+/** One configured hub, as `hermes.hubList` and the `hermes_hub_list` tool report it. */
+export const HermesChatHub = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  /** Null while the hub has no thread: it links nothing and posts nothing. */
+  threadId: Schema.NullOr(ThreadId),
+  /** Platform channel ids whose conversations belong to the hub. */
+  channels: ForwardCompatibleArray(TrimmedNonEmptyString),
+  autoLink: Schema.Boolean,
+  autoLinkCap: NonNegativeInt,
+  /** Conversations currently linked into the hub's thread; 0 while Hermes is off. */
+  linkedCount: NonNegativeInt,
+});
+export type HermesChatHub = typeof HermesChatHub.Type;
+
+export const HermesChatHubsResult = Schema.Struct({
+  hubs: ForwardCompatibleArray(HermesChatHub),
+});
+export type HermesChatHubsResult = typeof HermesChatHubsResult.Type;

@@ -31,4 +31,40 @@ profile.
 While the surface is open and the window is visible, it checks for new messages every few
 seconds. Transcripts are read from Hermes when you look at them and are not saved in T3 Code.
 
-Agents can read the same conversations with the `hermes_chat_list` and `hermes_chat_read` tools.
+## Link a conversation to a thread
+
+A linked conversation shows up as a card in a thread's timeline, updated as the chat moves. Select
+the card to open the conversation; **Detach** takes the card down. A detached conversation stays out
+of an auto-linking hub until you link it again, and the hub fills the slot with its next newest
+conversation. To link the conversation you are
+reading to the thread the panel belongs to, use **Link to this thread** in its header, and
+**Unlink** to undo it. Opening a conversation never links it.
+
+## Thread hubs
+
+A hub is one pinned thread that collects the conversations from Discord channels you name. Set
+them up in **Settings › Integrations › External thread hubs**: add a hub, give it a name and the
+channel ids (separated by commas or spaces), then pick one of the environment's pinned threads or
+create one. A hub marked **Needs a thread** has no thread, or its thread is gone or unpinned, and
+links nothing until you pick one.
+
+With **Link new conversations** on, each new conversation in the hub's channels links itself,
+keeping the newest few up to the cap you set.
+
+Hermes can also ask for a link by appending a line to `t3-hub-links.jsonl` in the Hermes home:
+
+```json
+{ "sessionKey": "agent:main:discord:...", "hub": "Ops", "reason": "deploy question" }
+```
+
+`hub` is the hub's id or name. `action` is `link` (the default) or `unlink`; `reason` and `at` are
+optional. A line is ignored unless the conversation is in one of that hub's channels.
+
+Known limit: a
+brand-new hub thread is not marked unread until it has had at least one run.
+
+## Agent tools
+
+Agents can read the same conversations with `hermes_chat_list` and `hermes_chat_read`, list hubs
+with `hermes_hub_list`, and link or unlink a conversation with `hermes_chat_link` and
+`hermes_chat_unlink`: to the calling thread, or with `hub` to that hub's thread.

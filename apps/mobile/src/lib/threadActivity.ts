@@ -4,6 +4,7 @@ import type {
   ThreadUserInputQuestion,
 } from "@t3tools/client-runtime/state/thread-requests";
 import { turnItemIsWorkspacePreparation } from "@t3tools/client-runtime/state/turn-item-presentation";
+import { isDetachedHermesChatCard } from "@t3tools/client-runtime/state/hermesChat";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import { isLiveSubagentTurnItem } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -597,6 +598,8 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
       case "background_task":
       case "system":
         return "zap";
+      case "hermes_chat":
+        return "message";
       default:
         source satisfies never;
         return "zap";
@@ -2230,6 +2233,7 @@ export function buildThreadFeed(
     if (turnItemIsWorkspacePreparation(item)) continue;
     if (item.type === "todo_list" || item.type === "checkpoint") continue;
     if (item.type === "user_message" && foldedAnswerMessageIds.has(item.messageId)) continue;
+    if (isDetachedHermesChatCard(item)) continue;
     if (item.type === "run_interrupt_request") {
       continue;
     }

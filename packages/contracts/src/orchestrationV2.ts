@@ -1152,6 +1152,10 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
     Schema.Struct({ kind: Schema.Literal("background_command").transform("command") }),
     SubagentNotificationSource,
     CommandNotificationSource,
+    // Fork: a linked Hermes gateway conversation's card in a thread hub. The
+    // card opens the conversation surface, not a thread, so it carries the
+    // conversation's session key instead of a child thread id.
+    Schema.Struct({ kind: Schema.Literal("hermes_chat"), sessionKey: Schema.String }),
     Schema.Struct({ kind: Schema.Literal("monitor") }),
     Schema.Struct({ kind: Schema.Literal("background_task") }),
     Schema.Struct({ kind: Schema.Literal("system") }),

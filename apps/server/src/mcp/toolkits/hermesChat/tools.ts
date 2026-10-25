@@ -1,13 +1,19 @@
 import {
+  HermesChatHubsResult,
+  HermesChatLinksResult,
   HermesChatListInput,
   HermesChatListResult,
   HermesChatTranscript,
   HermesChatTranscriptInput,
   OrchestratorMcpFailure,
+  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as HermesChatHubService from "../../../hermes/HermesChatHubService.ts";
 import * as HermesChatService from "../../../hermes/HermesChatService.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const shared = {
@@ -38,4 +44,63 @@ const HermesChatReadTool = Tool.make("hermes_chat_read", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
 
-export const HermesChatToolkit = Toolkit.make(HermesChatListTool, HermesChatReadTool);
+const hubShared = {
+  failure: OrchestratorMcpFailure,
+  failureMode: "return" as const,
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    HermesChatHubService.HermesChatHubService,
+  ],
+};
+
+/** Link tools check the caller's write access, which reads its thread. */
+const linkShared = {
+  ...hubShared,
+  dependencies: [...hubShared.dependencies, ThreadManagementService.ThreadManagementService],
+};
+
+const HermesHubListTool = Tool.make("hermes_hub_list", {
+  ...hubShared,
+  description:
+    "List the external thread hubs configured in this environment: each hub's id, name, pinned threadId (null while it has none), the Discord channel ids it collects, whether new conversations link automatically, the cap, and how many conversations are linked now. Read-only.",
+  success: HermesChatHubsResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+const HermesChatLinkTargetInput = Schema.Struct({
+  sessionKey: TrimmedNonEmptyString,
+  /** Hub id or name; omit to target the calling thread. */
+  hub: Schema.optional(TrimmedNonEmptyString),
+});
+
+const HermesChatLinkTool = Tool.make("hermes_chat_link", {
+  ...linkShared,
+  description:
+    "Link a Hermes gateway conversation (sessionKey from hermes_chat_list) into a thread, so its card appears in that thread's timeline and is refreshed as the conversation moves. Links to the calling thread, or with hub (id or name from hermes_hub_list) to that hub's thread. Returns every link that holds afterwards.",
+  parameters: HermesChatLinkTargetInput,
+  success: HermesChatLinksResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+const HermesChatUnlinkTool = Tool.make("hermes_chat_unlink", {
+  ...linkShared,
+  description:
+    "Detach a linked Hermes gateway conversation from the calling thread, or with hub (id or name) from that hub's thread. Existing cards stay in the timeline; they just stop updating. Returns every link that holds afterwards.",
+  parameters: HermesChatLinkTargetInput,
+  success: HermesChatLinksResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
+
+export const HermesChatToolkit = Toolkit.make(
+  HermesChatListTool,
+  HermesChatReadTool,
+  HermesHubListTool,
+  HermesChatLinkTool,
+  HermesChatUnlinkTool,
+);

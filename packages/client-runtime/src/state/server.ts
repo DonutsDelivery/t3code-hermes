@@ -934,6 +934,20 @@ export function createServerEnvironmentAtoms<R, E>(
       ]);
     }).pipe(Atom.withLabel(`environment-data:server:usage-scan-settings:${environmentId}`)),
   );
+  /**
+   * The hub a thread posts Hermes conversation cards for, by name, or null.
+   * Keyed per thread and a primitive value, so a settings change re-renders
+   * only the rows whose answer changed.
+   */
+  const hermesHubNameAtom = Atom.family((key: string) => {
+    const [environmentId, threadId] = key.split("\u0000") as [EnvironmentId, string];
+    return Atom.make(
+      (get) =>
+        get(settingsValueAtom(environmentId))?.integrations.hermesHubs.find(
+          (hub) => hub.threadId === threadId,
+        )?.name ?? null,
+    ).pipe(Atom.withLabel(`environment-data:server:hermes-hub-name:${key}`));
+  });
   const providersValueAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => get(configValueAtom(environmentId))?.providers ?? null).pipe(
       Atom.withLabel(`environment-data:server:providers:${environmentId}`),
@@ -1011,6 +1025,8 @@ export function createServerEnvironmentAtoms<R, E>(
     }),
     updateStateAtom,
     settingsValueAtom,
+    hermesHubNameAtom: (environmentId: EnvironmentId, threadId: string) =>
+      hermesHubNameAtom(`${environmentId}\u0000${threadId}`),
     providersValueAtom,
     providerAuthState: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:provider:auth-state",
@@ -1265,6 +1281,20 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:hermes-chat-transcript",
       tag: WS_METHODS.hermesChatTranscript,
       staleTimeMs: 2_000,
+    }),
+    /** Which threads each conversation's card lives in; re-read after a link change. */
+    hermesChatLinks: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:hermes-chat-links",
+      tag: WS_METHODS.hermesChatLinks,
+      staleTimeMs: 5_000,
+    }),
+    hermesChatLink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:hermes-chat-link",
+      tag: WS_METHODS.hermesChatLink,
+    }),
+    hermesChatUnlink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:hermes-chat-unlink",
+      tag: WS_METHODS.hermesChatUnlink,
     }),
     paperclipOverview: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:paperclip-overview",

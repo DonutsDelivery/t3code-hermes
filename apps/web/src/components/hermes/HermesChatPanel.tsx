@@ -6,6 +6,11 @@
  * reads through the environment's server, so it works the same remotely.
  * Nothing here can reply: the conversation belongs to the platform.
  */
+import { useAtomValue } from "@effect/atom-react";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import {
   describeHermesChatAvailability,
   describeHermesChatTools,
@@ -29,6 +34,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "re
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
+import { useAtomCommand } from "~/state/use-atom-command";
 
 import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
@@ -36,6 +42,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { RefreshIcon } from "../ui/refresh-icon";
 import { ScrollArea } from "../ui/scroll-area";
 import { Skeleton } from "../ui/skeleton";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 
 const LIVE_REFRESH_MS = 5_000;
 
@@ -110,6 +117,7 @@ export function HermesChatPanel(props: {
   return (
     <HermesChatTranscriptView
       environmentId={props.environmentId}
+      threadRef={props.threadRef}
       sessionKey={props.sessionKey}
       onSwitch={() => setPicking(true)}
     />
@@ -206,8 +214,62 @@ function HermesChatPicker(props: {
   );
 }
 
+/**
+ * Links or unlinks the open conversation's card into the thread this surface
+ * belongs to. Opening a conversation never links it; only this does.
+ */
+function HermesChatLinkToggle(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly sessionKey: string;
+}) {
+  const environmentId = props.threadRef.environmentId;
+  const canOperate = useAtomValue(serverEnvironment.hermesChatLink.permissionAtom(environmentId));
+  const linksQuery = useEnvironmentQuery(
+    serverEnvironment.hermesChatLinks({ environmentId, input: {} }),
+  );
+  const link = useAtomCommand(serverEnvironment.hermesChatLink, {
+    label: "hermes conversation link",
+  });
+  const unlink = useAtomCommand(serverEnvironment.hermesChatUnlink, {
+    label: "hermes conversation unlink",
+  });
+  const [busy, setBusy] = useState(false);
+  const links = linksQuery.data?.links;
+  if (!canOperate || links === undefined) return null;
+  const linked = links.some(
+    (entry) => entry.sessionKey === props.sessionKey && entry.threadId === props.threadRef.threadId,
+  );
+  const toggle = async () => {
+    setBusy(true);
+    const input = { sessionKey: props.sessionKey, threadId: props.threadRef.threadId };
+    const result = linked
+      ? await unlink({ environmentId, input })
+      : await link({ environmentId, input });
+    setBusy(false);
+    if (result._tag === "Failure") {
+      if (isAtomCommandInterrupted(result)) return;
+      const error = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: linked ? "Could not unlink conversation" : "Could not link conversation",
+          description: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return;
+    }
+    linksQuery.refresh();
+  };
+  return (
+    <Button size="compact" variant="ghost" disabled={busy} onClick={() => void toggle()}>
+      {linked ? "Unlink" : "Link to this thread"}
+    </Button>
+  );
+}
+
 function HermesChatTranscriptView(props: {
   readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
   readonly sessionKey: string;
   readonly onSwitch: () => void;
 }) {
@@ -255,6 +317,7 @@ function HermesChatTranscriptView(props: {
               : `${hermesChatConversationSubtitle(conversation)} · ${formatHermesChatAge(conversation.lastActivityAt)}`}
           </p>
         </div>
+        <HermesChatLinkToggle threadRef={props.threadRef} sessionKey={props.sessionKey} />
         <Button
           size="icon-xs"
           variant="ghost"

@@ -55,6 +55,9 @@ export type T3McpToolSummaryAction =
   | "paperclip-connect"
   | "hermes-chat-list"
   | "hermes-chat-read"
+  | "hermes-hub-list"
+  | "hermes-chat-link"
+  | "hermes-chat-unlink"
   | "attachment-prepare"
   | "attachment-discard"
   | "attachment-send"
@@ -321,6 +324,15 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   paperclip_connect: tool(["Connect", "Connecting", "Connected", "Paperclip"], "paperclip-connect"),
   hermes_chat_list: tool(["List", "Listing", "Listed", "Hermes conversations"], "hermes-chat-list"),
   hermes_chat_read: tool(["Read", "Reading", "Read", "a Hermes conversation"], "hermes-chat-read"),
+  hermes_hub_list: tool(["List", "Listing", "Listed", "Hermes thread hubs"], "hermes-hub-list"),
+  hermes_chat_link: tool(
+    ["Link", "Linking", "Linked", "a Hermes conversation"],
+    "hermes-chat-link",
+  ),
+  hermes_chat_unlink: tool(
+    ["Unlink", "Unlinking", "Unlinked", "a Hermes conversation"],
+    "hermes-chat-unlink",
+  ),
   t3_thread_launch: tool(["Launch", "Launching", "Launched", "a project thread"], "thread-create"),
   t3_project_list: tool(["List", "Listing", "Listed", "projects"], "project-list"),
   t3_project_read: tool(["Read", "Reading", "Read", "a project"], "project-read"),

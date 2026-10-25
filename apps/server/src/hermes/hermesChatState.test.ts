@@ -9,6 +9,7 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   HERMES_CHAT_MESSAGE_TEXT_MAX,
   cleanHermesGatewayUserText,
+  readHermesChatChannels,
   readHermesChatConversations,
   readHermesChatTranscript,
 } from "./hermesChatState.ts";
@@ -243,6 +244,91 @@ describe("cleanHermesGatewayUserText", () => {
     });
     expect(cleanHermesGatewayUserText('[Replying to your previous message: "a\nb"]\n\nok')).toEqual(
       { text: "ok", replyTo: "a b" },
+    );
+  });
+});
+
+describe("readHermesChatChannels", () => {
+  it("names each conversation's channels from its newest keyed session, newest first", () => {
+    withStateDb(
+      (db) => {
+        seedRotatedThread(db);
+        // The newest keyed session of the thread conversation names a thread of
+        // a parent chat, so both ids are the conversation's channels.
+        insertHermesGatewaySession(db, {
+          id: "thread-newest",
+          sessionKey: THREAD,
+          startedAt: 1_500,
+          lastActivityAt: 1_500,
+          originJson: JSON.stringify({
+            platform: "discord",
+            thread_id: "111",
+            parent_chat_id: "999",
+            user_name: "Yato",
+          }),
+        });
+        insertHermesGatewaySession(db, {
+          id: "group",
+          sessionKey: "agent:main:discord:group:444:444",
+          startedAt: 2_500,
+          lastActivityAt: 2_600,
+          originJson: JSON.stringify({ platform: "discord", chat_id: "444", user_name: "Rin" }),
+        });
+      },
+      (dbPath) => {
+        expect(readHermesChatChannels(dbPath, { sinceSeconds: 500 })).toEqual([
+          {
+            sessionKey: "agent:main:discord:group:444:444",
+            platform: "discord",
+            channelIds: ["444"],
+            lastActivityAt: 2_600,
+          },
+          {
+            sessionKey: THREAD,
+            platform: "discord",
+            channelIds: ["111", "999"],
+            lastActivityAt: 1_500,
+          },
+        ]);
+        // Conversations outside the window are not returned at all.
+        expect(readHermesChatChannels(dbPath, { sinceSeconds: 2_000 })).toEqual([
+          {
+            sessionKey: "agent:main:discord:group:444:444",
+            platform: "discord",
+            channelIds: ["444"],
+            lastActivityAt: 2_600,
+          },
+        ]);
+      },
+    );
+  });
+
+  it("reads a missing store as unavailable and a keyless origin as no channels", () => {
+    withStateDb(
+      (db) => {
+        seedRotatedThread(db);
+        insertHermesGatewaySession(db, {
+          id: "bare",
+          sessionKey: "agent:main:discord:dm:777",
+          startedAt: 3_000,
+          originJson: JSON.stringify({ platform: "discord", user_name: "Noa" }),
+        });
+      },
+      (dbPath) => {
+        expect(readHermesChatChannels(dbPath, { sinceSeconds: 2_000 })).toEqual([
+          {
+            sessionKey: "agent:main:discord:dm:777",
+            platform: "discord",
+            channelIds: [],
+            lastActivityAt: 3_000,
+          },
+        ]);
+        expect(
+          readHermesChatChannels(NodePath.join(NodePath.dirname(dbPath), "missing.db"), {
+            sinceSeconds: 0,
+          }),
+        ).toBeNull();
+      },
     );
   });
 });

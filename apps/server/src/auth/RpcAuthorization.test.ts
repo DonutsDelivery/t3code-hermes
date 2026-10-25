@@ -98,8 +98,18 @@ it("keeps the Hermes skill library and on-demand content read-only", () => {
 });
 
 it("keeps Hermes gateway conversations read-only", () => {
-  for (const method of [WS_METHODS.hermesChatList, WS_METHODS.hermesChatTranscript]) {
+  for (const method of [
+    WS_METHODS.hermesChatList,
+    WS_METHODS.hermesChatTranscript,
+    WS_METHODS.hermesChatLinks,
+  ]) {
     expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+  }
+});
+
+it("requires operate permission to change a conversation's links", () => {
+  for (const method of [WS_METHODS.hermesChatLink, WS_METHODS.hermesChatUnlink]) {
+    expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
   }
 });
 

@@ -163,6 +163,8 @@ export function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconNa
         return "zap";
       case "system":
         return "t3-code";
+      case "hermes_chat":
+        return "message-circle";
       default:
         source satisfies never;
         return "zap";
