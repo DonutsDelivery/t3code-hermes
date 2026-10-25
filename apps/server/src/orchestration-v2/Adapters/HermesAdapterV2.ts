@@ -160,6 +160,10 @@ export function makeHermesAcpAdapterFlavor(
     // hands its notice's ids back; Hermes compares the capability with `== 1`.
     clientCapabilitiesMeta: { "hermes.backgroundNotifications": true },
     wakeReceiptPromptMetaKey: "hermes.notificationIds",
+    // The Hermes gateway runs a turn of its own when a background job finishes (`notify: true`) and
+    // projects it to ACP viewers as session updates, with no `session/prompt` open. Without this
+    // those frames were dropped, so the agent woke and worked while its thread showed nothing.
+    enablePostSettleContinuation: true,
     resolveModelId: (selection) => resolveHermesAcpBaseModelId(selection.model),
     makeRuntime: (input) =>
       (options.makeRuntime ?? spawnRuntime)(input).pipe(

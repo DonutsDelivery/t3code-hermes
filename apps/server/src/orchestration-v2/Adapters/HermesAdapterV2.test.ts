@@ -148,6 +148,11 @@ const runMockTurn = (input: {
    * Hermes's ACP v1 shapes (`tool_call`) the v2 mock cannot send.
    */
   readonly promptUpdates?: ReadonlyArray<EffectAcpSchema.SessionUpdate>;
+  /**
+   * Session updates delivered after the first turn ends, with no prompt open: what the Hermes
+   * gateway projects when it runs a turn of its own for a finished background job.
+   */
+  readonly idleUpdates?: ReadonlyArray<EffectAcpSchema.SessionUpdate>;
   /** Text of a wake turn run after the first, as the continuation worker would send it. */
   readonly wakeTurnText?: Effect.Effect<string>;
 }) =>
@@ -176,13 +181,15 @@ const runMockTurn = (input: {
     };
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const promptUpdates = input.promptUpdates;
+    const idleUpdates = input.idleUpdates;
+    let sessionIdSeen: string | undefined;
     type Runtime = AcpSessionRuntime.AcpSessionRuntime["Service"];
     let deliver: Parameters<Runtime["handleSessionUpdate"]>[0] | undefined;
     const adapter = yield* makeHermesAdapterV2({
       instanceId,
       settings,
       environment,
-      ...(promptUpdates === undefined
+      ...(promptUpdates === undefined && idleUpdates === undefined
         ? {}
         : {
             makeRuntime: ({ runtimePolicy: _policy, ...runtimeInput }) =>
@@ -201,7 +208,9 @@ const runMockTurn = (input: {
                   prompt: () =>
                     Effect.gen(function* () {
                       const { sessionId } = yield* runtime.start();
-                      for (const update of promptUpdates) yield* deliver!({ sessionId, update });
+                      sessionIdSeen = sessionId;
+                      for (const update of promptUpdates ?? [])
+                        yield* deliver!({ sessionId, update });
                       return { stopReason: "end_turn" as const };
                     }),
                 })),
@@ -246,6 +255,9 @@ const runMockTurn = (input: {
       Stream.runCollect,
     );
     const events: Array<ProviderAdapterV2Event> = Array.from(yield* untilTerminal);
+    for (const update of idleUpdates ?? []) {
+      yield* deliver!({ sessionId: sessionIdSeen!, update });
+    }
     if (input.wakeTurnText !== undefined) {
       const wake = turnInput({
         threadId,
@@ -457,6 +469,30 @@ describe.skipIf(windowsHost)("HermesAdapterV2 against the mock agent", () => {
       assert.equal(offer.delivery, "message_text");
       assert.include(offer.detail ?? "", "Background process proc_ci000001 exited");
       assert.equal(offer.notification?.source.kind, "background_task");
+    }).pipe(Effect.provide(testLayer), Effect.scoped),
+  );
+
+  it.effect("offers a wake run for a turn the Hermes gateway runs after the prompt settled", () =>
+    Effect.gen(function* () {
+      const offers = yield* Queue.unbounded<ProviderContinuationRequest>();
+      yield* runMockTurn({
+        name: "idle-gateway-turn",
+        mockEnvironment: {},
+        promptUpdates: [
+          { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Queued." } },
+        ],
+        idleUpdates: [
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "The merge landed." },
+          },
+        ],
+        continuationRequests: {
+          offer: (request) => Queue.offer(offers, request).pipe(Effect.asVoid),
+        },
+      });
+      // A flavor without post-settle continuation drops these frames: the agent works, the thread stays blank.
+      assert.equal(yield* Queue.size(offers), 1);
     }).pipe(Effect.provide(testLayer), Effect.scoped),
   );
 
