@@ -1,32 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Which reasoning-effort levels a Hermes model actually supports.
- *
- * Hermes has one reasoning ladder for every model it can drive
- * (`hermes_constants.VALID_REASONING_EFFORTS`), but most models accept only a
- * prefix of it — and a few accept none at all. Rather than fetch models.dev
- * ourselves, we read the catalogue Hermes already maintains at
- * `<hermes home>/models_dev_cache.json`: it is refreshed by Hermes on its own
- * schedule, works offline, and keeps T3 Code and Hermes agreeing on what a
- * model can do.
- *
- * models.dev only answers a boolean — "does this model reason?" — so the two
- * cases where a boolean is wrong are handled here, both ported from
- * `hermes-webui`:
- *
- *   - **Ceilings.** Some lanes reject or mis-handle the top of the ladder, so
- *     the ladder is capped rather than offered in full.
- *   - **Forced thinking.** Z.AI's GLM-4.7 family cannot have reasoning
- *     configured at all, so no ladder is offered instead of one that silently
- *     does nothing.
- *
- * Everything returns "no opinion" (`null`) when the catalogue cannot answer —
- * missing file, corrupt file, unknown model. Custom endpoints fall back to the
- * underlying model vendor's catalogue when its family is recognizable. Callers omit
- * the selector entirely in that case. Guessing a ladder would mean rendering a
- * control that may not work, which is worse than rendering nothing.
- *
- * @module hermesReasoning
+ * Which reasoning-effort levels a Hermes model supports, from Hermes's own `models_dev_cache.json`,
+ * with ported `hermes-webui` ceilings and GLM-4.7 forced thinking. Returns `null` (no selector)
+ * when the catalogue can't answer; custom endpoints fall back to the vendor's catalogue when
+ * recognizable.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -90,11 +67,9 @@ export interface ParsedHermesModelSlug {
 
 /**
  * Splits the slug Hermes's ACP adapter encodes.
- *
- * `_encode_model_choice` writes `<provider>:<model>` and falls back to a bare
- * model id when it has no provider. The model half keeps any vendor namespace
- * (`openrouter:moonshotai/kimi-k2`), because that is how models.dev keys
- * aggregator catalogues.
+ * `_encode_model_choice` writes `<provider>:<model>` and falls back to a bare model id when it has
+ * no provider. The model half keeps any vendor namespace (`openrouter:moonshotai/kimi-k2`), because
+ * that is how models.dev keys aggregator catalogues.
  */
 export function parseHermesModelSlug(
   slug: string | null | undefined,
@@ -118,11 +93,10 @@ export function parseHermesModelSlug(
 }
 
 /**
- * Hermes provider id -> models.dev provider id
- * (`agent/models_dev.PROVIDER_TO_MODELS_DEV`). Only the entries whose catalogue
- * answer differs from the Hermes id are worth carrying; anything absent falls
- * back to the Hermes id itself, which is right for the majority of providers
- * and harmless when it is not (an unknown id yields "no opinion").
+ * Hermes provider id -> models.dev provider id (`agent/models_dev.PROVIDER_TO_MODELS_DEV`). Only
+ * the entries whose catalogue answer differs from the Hermes id are worth carrying; anything absent
+ * falls back to the Hermes id itself, which is right for the majority of providers and harmless
+ * when it is not (an unknown id yields "no opinion").
  */
 const PROVIDER_TO_MODELS_DEV: Readonly<Record<string, string>> = {
   "openai-codex": "openai",
@@ -312,13 +286,8 @@ export function isPreAdaptiveAnthropic(bare: string): boolean {
 }
 
 /**
- * Z.AI capability tier for a native-`zai` GLM model, port of
- * `_zai_glm_classification`.
- *
- * - `effort` — GLM-5.2+, accepts the intensity ladder.
- * - `thinking` — GLM-4.5 up to 5.1, on/off toggle only, no ladder.
- * - `forced` — GLM-4.7 family, reasoning is not configurable at all.
- * - `null` — not a native-`zai` GLM model.
+ * Z.AI tier for a native-`zai` GLM model (port of `_zai_glm_classification`): `effort` for
+ * GLM-5.2+, `thinking` (on/off) for 4.5 to 5.1, `forced` for the 4.7 family, or `null`.
  */
 export function classifyZaiGlm(
   parsed: ParsedHermesModelSlug,

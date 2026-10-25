@@ -1,13 +1,7 @@
 // @effect-diagnostics globalDate:off -- Display-only relative ages and locale date labels for UI rows.
 /**
- * Presentation for the read-only Paperclip surface, shared by every client.
- *
- * Pure functions over the overview the environment returns: what the
- * connection line says, how statuses read, and how agents nest under the
- * agent they report to. No atoms here; each client reads the overview through
- * its own `serverEnvironment.paperclipOverview` query.
- *
- * @module state/paperclip
+ * Presentation for the read-only Paperclip surface: connection copy, status labels, and the
+ * reporting tree. No atoms; clients query `paperclipOverview` themselves.
  */
 import type {
   PaperclipAgent,
@@ -137,12 +131,10 @@ export interface PaperclipOrgRow {
 const CLOSED_ISSUE_STATUSES = new Set(["done", "cancelled"]);
 
 /**
- * Agents in org-chart order: each manager followed by its reports, depth
- * first, siblings by name.
- *
- * An agent whose manager is not in the list (terminated, or outside what the
- * key can see) is treated as a root rather than hidden, and a reporting cycle
- * is broken where it is found, so every agent appears exactly once.
+ * Agents in org-chart order: each manager followed by its reports, depth first, siblings by name.
+ * An agent whose manager is not in the list (terminated, or outside what the key can see) is
+ * treated as a root rather than hidden, and a reporting cycle is broken where it is found, so every
+ * agent appears exactly once.
  */
 export function paperclipOrgRows(
   agents: ReadonlyArray<PaperclipAgent>,

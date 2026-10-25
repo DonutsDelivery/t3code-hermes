@@ -1,22 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Reading and writing the reasoning effort in Hermes's own `config.yaml`.
- *
- * Hermes resolves reasoning through a single chokepoint
- * (`hermes_constants.resolve_reasoning_config`): a per-model entry under
- * `agent.reasoning_overrides` wins, otherwise the global
- * `agent.reasoning_effort`. T3 Code writes the per-model entry, so picking a
- * level for one model never rewrites the default the user chose for every
- * other one.
- *
- * This is the user's real Hermes config — the same file the `hermes` CLI
- * reads — which is the point: a level picked in T3 Code is the level the
- * terminal uses, and vice versa. That also means the writes here are careful:
- * the document is edited in place through `yaml`'s document API so comments and
- * unrelated keys survive, a file that fails to parse is never overwritten, and
- * the replacement lands atomically.
- *
- * @module hermesReasoningConfig
+ * Reads and writes reasoning effort in Hermes's own `config.yaml`, shared with the `hermes` CLI.
+ * The per-model `agent.reasoning_overrides` entry is written so other models keep the user's
+ * default. Edits keep comments, never overwrite an unparseable file, and land atomically.
  */
 import * as NodeFS from "node:fs";
 
@@ -39,10 +25,9 @@ const GLOBAL_KEY = "reasoning_effort";
 
 /**
  * Bounded spelling variants for a model, in the order Hermes's own
- * `resolve_per_model_reasoning_effort` tries them: exact, then dots and dashes
- * swapped, then with and without the provider prefix. Hermes's matcher is
- * wider than this; we only need to recognise what we write plus what a user
- * plausibly hand-wrote.
+ * `resolve_per_model_reasoning_effort` tries them: exact, then dots and dashes swapped, then with
+ * and without the provider prefix. Hermes's matcher is wider than this; we only need to recognise
+ * what we write plus what a user plausibly hand-wrote.
  */
 function modelOverrideVariants(slug: string): ReadonlyArray<string> {
   const parsed = parseHermesModelSlug(slug);
@@ -108,12 +93,9 @@ function existingOverrideKey(overrides: unknown, slug: string): string | null {
 }
 
 /**
- * Port of `resolve_reasoning_config`, narrowed to the levels T3 Code offers.
- *
- * Hermes treats a `false`/`none`/`disabled` value as "thinking disabled", which
- * is a state T3 Code deliberately does not offer — reporting it as `unset`
- * would mislabel it, so it is reported as no level from the source that set it
- * and the caller leaves the file alone until the user picks something.
+ * Port of `resolve_reasoning_config`, narrowed to T3 Code's levels. A disabled value
+ * (`false`/`none`/`disabled`) reports no level from its source, so the file is left alone until the
+ * user picks one.
  */
 export function resolveHermesReasoningFromConfig(input: {
   readonly config: unknown;
@@ -150,13 +132,9 @@ export type HermesReasoningWriteOutcome =
   | { readonly _tag: "writeFailed"; readonly detail: string };
 
 /**
- * Reads `config.yaml` as plain data. Missing or unparseable reads as `null`,
- * which callers treat as "no configured level" rather than an error — the file
- * belongs to another application and is allowed to be absent or mid-edit.
- *
- * Synchronous because the provider snapshot resolves the current level while
- * building model capabilities, where a single small local read is cheaper than
- * threading a filesystem service through the probe.
+ * Reads `config.yaml` as plain data; missing or unparseable is `null` (no configured level), since
+ * another app owns the file. Synchronous because the provider snapshot reads it while building
+ * model capabilities.
  */
 export function readHermesConfigSync(configFile: string): unknown {
   let text: string;
@@ -172,11 +150,9 @@ export function readHermesConfigSync(configFile: string): unknown {
 
 /**
  * Sets (or clears) the per-model reasoning override in `config.yaml`.
- *
- * `level: null` deletes the override, handing the model back to the global
- * default — the way out of a level the user no longer wants. Pruning the
- * containers we created keeps repeated toggling from leaving `agent: {}`
- * behind in a file we do not own.
+ * `level: null` deletes the override, handing the model back to the global default — the way out of
+ * a level the user no longer wants. Pruning the containers we created keeps repeated toggling from
+ * leaving `agent: {}` behind in a file we do not own.
  */
 export const writeHermesReasoningOverride = Effect.fn(
   "hermesReasoningConfig.writeHermesReasoningOverride",

@@ -1,24 +1,7 @@
 /**
- * Wire shapes of the Hindsight HTTP API, and the mapping onto T3 Code's own.
- *
- * Transcribed from Hindsight's OpenAPI document at commit `205e47b4`, API
- * version 0.9.1. Every field the panel renders is decoded through a schema
- * here rather than read off an `any`, so a Hindsight upgrade that renames or
- * retypes something fails in this module's tests instead of quietly rendering
- * blank rows.
- *
- * Two Hindsight quirks are worth knowing before reading the mappers:
- *
- * - **`recall` and `list` disagree about names.** A recalled result calls the
- *   pathway `type` and hands back `entities` as an array; a listed memory unit
- *   calls it `fact_type` and hands back `entities` as one comma-joined string.
- *   Same rows, two spellings, so both get their own decoder.
- * - **Mental models are not memories.** They live under a separate resource
- *   with no semantic search of their own, so "recall" over them is a substring
- *   match applied here. {@link filterMentalModels} is that match, kept
- *   separate so it is obvious it is not Hindsight doing the ranking.
- *
- * @module hindsightApi
+ * Hindsight HTTP API shapes from OpenAPI `205e47b4` (0.9.1), decoded by schema so upgrades fail
+ * tests. `recall` and `list` name pathway and entities differently, so each has a decoder; mental
+ * models have no search, so {@link filterMentalModels} matches substrings locally.
  */
 import {
   type HindsightBank,
@@ -116,12 +99,8 @@ export const HindsightMentalModelListResponse = Schema.Struct({
 export type HindsightMentalModelListResponse = typeof HindsightMentalModelListResponse.Type;
 
 /**
- * `GET /v1/default/banks/{bank_id}/stats`.
- *
- * Only the fields the strip renders are declared. The optional ones are
- * genuinely optional in Hindsight's spec — `operations_by_status` and the
- * consolidation timestamps are all absent-able — so they are decoded loosely
- * rather than turning a bank that has never consolidated into a decode failure.
+ * `GET /v1/default/banks/{bank_id}/stats`, rendered fields only. Optional fields decode loosely, so
+ * a never-consolidated bank isn't a decode failure.
  */
 export const HindsightBankStatsResponse = Schema.Struct({
   bank_id: Schema.String,
@@ -310,13 +289,8 @@ export function bankFromListItem(item: typeof HindsightBankListItem.Type): Hinds
 }
 
 /**
- * Bank statistics, narrowed to what the strip renders.
- *
- * The pathway split is walked in T3 Code's own order rather than the object's,
- * so the breakdown line reads the same on every bank, and a fact type this
- * build does not know is dropped rather than shown under a raw API key. Zeroed
- * pathways are dropped too — a strip is read at a glance, and "Observation 0"
- * costs a line to say nothing.
+ * Bank stats for the strip, with pathways in T3 Code's fixed order; unknown and zero pathways are
+ * dropped.
  */
 export function statsFromResponse(response: HindsightBankStatsResponse): HindsightBankStats {
   const nodesByPathway: Array<HindsightPathwayCount> = [];

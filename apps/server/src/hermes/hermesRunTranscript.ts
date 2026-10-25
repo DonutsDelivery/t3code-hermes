@@ -1,17 +1,7 @@
 /**
- * Turns a Hermes background run's stored messages into thread turn items.
- *
- * A mirrored run has no T3 run of its own: Hermes already did the work, so its
- * transcript lands as run-less turn items, like imported history. Every item id
- * is derived from the run and the Hermes row it came from, so replaying rows
- * re-derives the same items and the watcher can keep its cursors in memory:
- * after a restart it replays a live run from the start and writes only the
- * items whose state is new.
- *
- * Tool rows become the same item kinds a live Hermes session produces
- * (commands, file changes, searches, generic tools).
- *
- * @module hermesRunTranscript
+ * Turns a Hermes background run's stored messages into run-less thread turn items with ids derived
+ * from the run and row, so replays re-derive the same items and cursors can stay in memory. Tool
+ * rows map to the item kinds a live Hermes session produces.
  */
 import {
   MessageId,

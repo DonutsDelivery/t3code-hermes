@@ -1,15 +1,7 @@
 /**
- * Hindsight response fixtures, transcribed from Hindsight's own schemas.
- *
- * Source: `vectorize-io/hindsight` at commit `205e47b4`, HTTP API 0.9.1 —
- * `hindsight-docs/static/openapi.json` for everything the spec types, and
- * `hindsight_api/engine/memories/pg/curation.py::list_memory_units` for the
- * memory-list rows, which the spec types only as bare objects.
- *
- * Every field Hindsight declares is present here, including the ones T3 Code
- * ignores. That is the point: a fixture trimmed to what the mappers read would
- * still pass after Hindsight renamed a field it does not use, and the drift
- * would surface as blank rows in someone's Memory tab instead.
+ * Hindsight response fixtures from `vectorize-io/hindsight` `205e47b4` (API 0.9.1, `openapi.json`
+ * and `curation.py::list_memory_units`). Every declared field is kept so a rename fails tests
+ * instead of blanking the Memory tab.
  */
 
 /** `BankListResponse`. */

@@ -1,13 +1,7 @@
 /**
- * Hermes delegate_task is an ordinary ACP tool, not a child session. Stock
- * Hermes suppresses rawInput/rawOutput, even for JSON results: _structured() is
- * only a Markdown formatter. Prefer the carried patch's structured fields;
- * keep the stock formatter fallback here, never in orchestration or clients.
- *
- * One call can launch a batch, so it maps to one subagent per child. Updates
- * are derived from the merged tool state alone: the adapter keeps the start's
- * rawInput and title across progress, and drops repeated or late updates for a
- * child it already finished.
+ * Hermes `delegate_task` is an ordinary ACP tool, mapped to one subagent per child. Prefer the
+ * carried patch's structured fields over stock Markdown, parsed here only. Updates derive from
+ * merged tool state; repeated or late updates for finished children drop.
  */
 import type { OrchestrationV2SubagentUsage } from "@t3tools/contracts";
 
@@ -280,12 +274,9 @@ function resultUpdate(
 const REMEMBERED_LAUNCHES = 256;
 
 /**
- * Returns the subagent updates for a Hermes delegation tool call, or undefined
- * when the call is not a delegation spawn. An empty array claims the call
- * without moving any child (spinner frames, nested grandchildren).
- *
- * Stock Hermes names the children only in the start's content, which the
- * completion replaces, so each launch's children are remembered by call id.
+ * Subagent updates for a Hermes delegation call, or undefined when it isn't one; an empty array
+ * claims the call without moving a child. Stock Hermes names children only in the start, so they're
+ * remembered by call id.
  */
 export function makeHermesSubagentExtractor() {
   const launches = new Map<string, ReadonlyArray<Child>>();

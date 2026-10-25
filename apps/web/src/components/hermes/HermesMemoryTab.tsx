@@ -57,12 +57,8 @@ function MemoryRow({ memory }: { readonly memory: HindsightMemory }) {
 }
 
 /**
- * How big the bank is, in one line above the search box.
- *
- * Renders nothing at all when the counts could not be read: they decorate the
- * list, and a strip is not worth an error state of its own while the memories
- * underneath it are perfectly readable. Until they land it says so in words —
- * "0 memories" for a bank nobody has counted yet would be a lie.
+ * Bank size above the search box. Renders nothing if counts can't be read, and says it's counting
+ * until they land rather than showing a false "0 memories".
  */
 function MemoryStatsStrip({
   isPending,

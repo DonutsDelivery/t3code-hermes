@@ -1,10 +1,7 @@
 /**
- * The Paperclip surface's server side, against fixtures shaped like a live
- * Paperclip's answers.
- *
- * What matters here is the panel's honesty: an unconfigured, offline, or
- * rejected key each renders its own sentence, a viewer key is reported as
- * read-only, and only `GET`s ever leave this service.
+ * The Paperclip surface's server side, against fixtures shaped like a live Paperclip's answers.
+ * What matters here is the panel's honesty: an unconfigured, offline, or rejected key each renders
+ * its own sentence, a viewer key is reported as read-only, and only `GET`s ever leave this service.
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";

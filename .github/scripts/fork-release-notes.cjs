@@ -1,16 +1,8 @@
 #!/usr/bin/env node
-// Writes a fork release's notes from git history. GitHub's generated notes
-// only list this repository's PRs, so everything that arrives through an
-// upstream sync collapses into a single "merge upstream" line. These notes
-// list the upstream commits the release picks up, then the fork's own changes.
-//
-// Upstream commits link to their upstream PRs but carry no @mentions: a fork
-// release must not ping upstream contributors on every nightly.
-//
-// Usage (from release.yml, after fetching upstream main):
-//   node .github/scripts/fork-release-notes.cjs --previous-tag <tag> --tag <tag>
-//     --ref <sha> --upstream-ref FETCH_HEAD --upstream-repo pingdotgg/t3code
-//     --output release-notes.md
+// Writes fork release notes: upstream commits the release picks up (linked, without @mentions so
+// nightlies never ping upstream), then fork changes. Usage: node
+// .github/scripts/fork-release-notes.cjs --previous-tag <tag> --tag <tag> --ref <sha>
+// --upstream-ref FETCH_HEAD --upstream-repo pingdotgg/t3code --output release-notes.md
 
 const { execFileSync } = require("node:child_process");
 const { writeFileSync } = require("node:fs");
@@ -22,11 +14,10 @@ const RECORD = "\x1e";
 const isSyncTitle = (title) => /^chore\(sync\)/i.test(title);
 
 /**
- * Turns `git log --first-parent --format=%P%x1f%s%x1f%b%x1e` output for the
- * fork's main into change titles. GitHub merge commits contribute their PR
- * title, other merges (upstream syncs) are skipped, and plain commits keep
- * their subject. Sync PRs are dropped because the upstream section already
- * lists what they brought in.
+ * Turns `git log --first-parent --format=%P%x1f%s%x1f%b%x1e` output for the fork's main into change
+ * titles. GitHub merge commits contribute their PR title, other merges (upstream syncs) are
+ * skipped, and plain commits keep their subject. Sync PRs are dropped because the upstream section
+ * already lists what they brought in.
  */
 function parseForkChanges(log) {
   return log

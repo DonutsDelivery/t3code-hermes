@@ -1,14 +1,7 @@
 /**
- * HermesPatchService — status and apply/remove for the Hermes patches this
- * server ships, against the checkout of the environment's enabled Hermes,
- * `hermes update` with the patches lifted off and put back around it, and
- * restarting the Hermes gateway so it runs the patched code.
- *
- * Nothing is cached: every call reads the checkout and the gateway, because
- * `hermes update` or a terminal can change either between two clicks. The
- * one piece of state kept here is the restart this server is running.
- *
- * @module HermesPatchService
+ * Patch status and apply/remove against the enabled Hermes checkout, `hermes update` with patches
+ * lifted off and restored, and gateway restarts. Nothing is cached because the checkout can change
+ * between clicks; only the in-flight restart is kept.
  */
 import {
   HermesPatchError,
@@ -420,16 +413,9 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
   }, Effect.scoped);
 
   /**
-   * Runs `hermes update` without prompts or stash restore. The gateway restart
-   * is deferred: it would otherwise restart on the code before our patches go
-   * back on, so the user restarts it once they have.
-   *
-   * Older Hermes rejects flags it predates (`--keep-stash` and
-   * `--no-gateway-restart` came in August and September 2026) before pulling
-   * anything, and those are the checkouts most in need of an update, so only
-   * flags `update --help` lists are passed. Without `--keep-stash` there is
-   * nothing to restore anyway, since the tree is clean by then; without
-   * `--no-gateway-restart` the gateway restarts once before the patches return.
+   * Runs `hermes update` without prompts or stash restore, deferring the gateway restart until
+   * patches are back on. Only flags `update --help` lists are passed, since older Hermes rejects
+   * `--keep-stash`/`--no-gateway-restart`.
    */
   const runHermesUpdate = Effect.fn("HermesPatchService.runHermesUpdate")(
     function* (checkout: {
@@ -571,11 +557,10 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
   });
 
   /**
-   * Runs `hermes gateway restart` with the instance's environment, so its
-   * `HERMES_HOME` picks the gateway. Hermes owns the how: it drains in-flight
-   * turns, then hands the restart to systemd, launchd, or whatever supervises
-   * the gateway. Success means a different gateway answers afterwards; the
-   * CLI exits 0 on some paths that leave the old one running.
+   * Runs `hermes gateway restart` with the instance's environment, so its `HERMES_HOME` picks the
+   * gateway. Hermes owns the how: it drains in-flight turns, then hands the restart to systemd,
+   * launchd, or whatever supervises the gateway. Success means a different gateway answers
+   * afterwards; the CLI exits 0 on some paths that leave the old one running.
    */
   const runRestart = Effect.fn("HermesPatchService.runRestart")(
     function* (checkout: Checkout, previousPid: number) {
@@ -646,12 +631,10 @@ export const makeWith = Effect.fnUntraced(function* (options: HermesPatchService
           return [true, { running: true, failure: null, fiber: null }];
         });
         if (!claimed || gateway === null) return false;
-        // Under the change lock, so a gateway never comes back up on code an
-        // Update Hermes or a patch change is halfway through rewriting. The
-        // claim above is immediate, so the tab reads "restarting" meanwhile.
-        // The gateway is read again once the lock is held: an update that
-        // restarted it meanwhile left a different one, which is the one to
-        // replace.
+        // Under the change lock, so a gateway never comes back up on code an Update Hermes or a
+        // patch change is halfway through rewriting. The claim above is immediate, so the tab reads
+        // "restarting" meanwhile. The gateway is read again once the lock is held: an update that
+        // restarted it meanwhile left a different one, which is the one to replace.
         const restart = Effect.gen(function* () {
           const current = yield* readGateway(checkout.hermesHome);
           yield* runRestart(checkout, (current ?? gateway).pid);

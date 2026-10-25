@@ -1,13 +1,6 @@
 /**
- * The read-only Paperclip surface: one company's agents, work, and runs.
- *
- * Everything comes from one `paperclip.overview` read through the
- * environment's server, so the surface works the same from a phone or a
- * tunnel. Lists arrive already capped server-side, which is why they render
- * as plain rows rather than through a virtualized list.
- *
- * Nothing here writes to Paperclip. Rows open in Paperclip's own web app when
- * the environment knows its address.
+ * The read-only Paperclip surface, from one `paperclip.overview` read through the server. Lists
+ * arrive capped, so plain rows suffice. Rows open in Paperclip's web app when its address is known.
  */
 import {
   describePaperclipConnection,

@@ -1,13 +1,6 @@
 /**
- * Memory settings — where an environment's Hindsight connection comes from.
- *
- * With nothing set here, the environment uses the Hermes install's own
- * Hindsight config, so these rows are overrides: a filled field wins over
- * Hermes for that field alone, and clearing it hands the field back. The
- * connection row reads what the server actually resolved rather than what the
- * fields say, so it cannot claim a connection the Memory tab does not have.
- *
- * @module MemorySettings
+ * Where an environment's Hindsight connection comes from. Fields override Hermes's own config one
+ * by one; the connection row shows what the server resolved.
  */
 import { describeHindsightConnection } from "@t3tools/client-runtime/state/hindsight";
 import type { EnvironmentId, HindsightSettings } from "@t3tools/contracts";

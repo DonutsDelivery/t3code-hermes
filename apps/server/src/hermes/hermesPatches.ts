@@ -1,12 +1,7 @@
 /**
- * The Hermes patches this server ships, and the git calls that read and change
- * them in a Hermes checkout.
- *
- * Each patch ships several versions, each made for a different Hermes commit
- * (`infra/hermes/patches.json`), because users' checkouts sit anywhere along
- * Hermes `main`. State is read with `git apply --check` in both directions
- * rather than recorded anywhere, so it is right no matter who touched the
- * checkout last: T3 Code, `hermes update`'s autostash, or someone at a terminal.
+ * The Hermes patches this server ships, with several versions each for different Hermes commits
+ * (`infra/hermes/patches.json`). State is read with `git apply --check` both ways, never recorded,
+ * so it holds whoever touched the checkout last.
  */
 import {
   HermesPatchId,
@@ -83,12 +78,9 @@ const LAUNCHER_MAX_HOPS = 3;
 const LAUNCHER_EXEC = /^\s*exec\s+["']?(\/[^\s"']+)/m;
 
 /**
- * The git checkout a Hermes executable was installed from, or null.
- *
- * A source install puts the binary at `<checkout>/venv/bin/hermes`, or at
- * `<checkout>/.hermes/bin/hermes` behind a `sh` launcher on PATH that `exec`s
- * it, so launchers are followed. Nix, Docker, apt and pip installs have no
- * checkout beside them; `hermes update` refuses those too.
+ * The git checkout a Hermes executable was installed from, or null. Follows `sh` launchers to
+ * `<checkout>/venv/bin/hermes` or `<checkout>/.hermes/bin/hermes`; Nix, Docker, apt and pip
+ * installs have none.
  */
 export const resolveHermesGitCheckout = Effect.fn("resolveHermesGitCheckout")(function* (
   realCommandPath: string,
@@ -202,20 +194,10 @@ const patchFilePaths = (content: string): ReadonlySet<string> => {
 };
 
 /**
- * Which of the versions that reverse cleanly is the one applied in the working
- * tree, or null when none can be told to be. A version reverses cleanly too
- * when upstream already carries its change, and two versions can patch
- * different upstream text into the same result, or the same text in different
- * places; reversing the wrong one would write the wrong text back.
- *
- * The applied one is a version that, applied to HEAD, gives exactly the files
- * the checkout has now once the other applied patches are taken back out:
- * patches can share a file, and their changes are not this one's. Failing
- * that (the user also edited those files), a lone version that applies to
- * HEAD. Each check runs in its own
- * scratch index, so the checkout's own index is untouched. When neither picks
- * out exactly one, there is no telling, so null: the patch still reads as
- * applied, and Remove refuses rather than guess.
+ * The applied version among those that reverse cleanly, or null when that can't be proven. Prefer a
+ * version whose result matches the checkout once other applied patches are taken out, else a lone
+ * version that applies to HEAD. Checks use scratch indexes; null makes Remove refuse rather than
+ * guess.
  */
 const pickAppliedVersion = Effect.fn("pickHermesAppliedVersion")(function* (
   checkoutRoot: string,
@@ -229,11 +211,10 @@ const pickAppliedVersion = Effect.fn("pickHermesAppliedVersion")(function* (
     Effect.forEach(files, (file) =>
       fileSystem.readFileString(file).pipe(Effect.map(patchFilePaths)),
     ).pipe(Effect.map((sets) => sets.flatMap((set) => [...set])));
-  // Compared over every path any candidate touches, both sides of a rename
-  // included: a version that changes fewer files would otherwise match while
-  // another's change sits elsewhere. Only other patches' versions sharing one
-  // of those files matter; the rest, and any edit in their files, have no
-  // bearing on this patch.
+  // Compared over every path any candidate touches, both sides of a rename included: a version that
+  // changes fewer files would otherwise match while another's change sits elsewhere. Only other
+  // patches' versions sharing one of those files matter; the rest, and any edit in their files,
+  // have no bearing on this patch.
   const candidatePaths = new Set(yield* pathsOf(candidates));
   if (candidatePaths.size === 0) return null;
   // Each other patch sharing a file with the candidates may have one of its
@@ -258,11 +239,10 @@ const pickAppliedVersion = Effect.fn("pickHermesAppliedVersion")(function* (
     [[]],
   );
   if (combinations.length > MAX_OTHER_COMBINATIONS) return null;
-  // Per choice, the working tree over the candidates' paths and the chosen
-  // versions' own, as a tree, with the chosen versions reversed out. Built
-  // through a scratch index so files a patch added, which `git apply` leaves
-  // untracked, count too; a plain `git diff` would skip them. Paths no
-  // chosen version touches stay at HEAD, so edits there have no bearing.
+  // Per choice, the working tree over the candidates' paths and the chosen versions' own, as a
+  // tree, with the chosen versions reversed out. Built through a scratch index so files a patch
+  // added, which `git apply` leaves untracked, count too; a plain `git diff` would skip them. Paths
+  // no chosen version touches stay at HEAD, so edits there have no bearing.
   const normalized = new Set<string>();
   for (const [index, combo] of combinations.entries()) {
     const env = { GIT_INDEX_FILE: path.join(directory, `index-worktree-${index}`) };
@@ -308,12 +288,9 @@ const pickAppliedVersion = Effect.fn("pickHermesAppliedVersion")(function* (
   if (exact.length > 0) {
     return exact.every((check) => check.tree === exact[0]!.tree) ? exact[0]!.file : null;
   }
-  // Failing that (the user also edited those files), only a lone version is
-  // taken, and only if it applies to HEAD but does not also reverse from HEAD
-  // itself. With several versions that reverse, an edit can make one fit
-  // where another was applied, so none is proven. HEAD can also hold a
-  // patch's before and after text in different places, so it fits both ways
-  // without having been applied, and reversing would rewrite upstream text.
+  // Otherwise take only a lone version that applies to HEAD without also reversing from it: HEAD
+  // can hold a patch's before and after text in different places, and reversing would rewrite
+  // upstream text.
   if (candidates.length !== 1) return null;
   const onHead = checks.filter((check) => check.onHead);
   if (onHead.length !== 1) return null;
@@ -328,12 +305,9 @@ const pickAppliedVersion = Effect.fn("pickHermesAppliedVersion")(function* (
 }, Effect.scoped);
 
 /**
- * Which of several versions that all apply is the one for this checkout: the
- * newest made for a commit HEAD already contains. Older versions can still fit
- * a newer checkout when they touch other occurrences of the same text, so
- * manifest order alone could apply the wrong one. When no recorded commit is
- * known here, the versions are still interchangeable if they all produce the
- * same tree from HEAD; otherwise null, and Apply refuses rather than guess.
+ * The version to apply when several fit: the newest made for a commit HEAD contains, since older
+ * versions can fit other text occurrences. Without a known commit, only versions producing the same
+ * tree are interchangeable; else null and Apply refuses.
  */
 const pickForwardVersion = Effect.fn("pickHermesForwardVersion")(function* (
   checkoutRoot: string,
@@ -570,10 +544,9 @@ const isAncestor = (checkoutRoot: string, ancestor: string, descendant: string) 
   );
 
 /**
- * Whether HEAD is older than a version's Hermes commit, so updating Hermes
- * moves toward it. Ancestry decides when the commit is known locally,
- * including a HEAD whose local commits sit on an older base; a commit the
- * checkout has never fetched falls back to comparing HEAD's committer date
+ * Whether HEAD is older than a version's Hermes commit, so updating Hermes moves toward it.
+ * Ancestry decides when the commit is known locally, including a HEAD whose local commits sit on an
+ * older base; a commit the checkout has never fetched falls back to comparing HEAD's committer date
  * with the recorded commit date.
  */
 const isHeadOlderThan = Effect.fn("isHermesHeadOlderThan")(function* (
@@ -653,12 +626,9 @@ export const readHermesPatches = Effect.fn("readHermesPatches")(function* (
 }, Effect.scoped);
 
 /**
- * Applies (`forward`) or removes (`reverse`) one patch, returning whether git
- * accepted it. Applying uses the newest version that fits the checkout;
- * removing reverses whichever version is applied. `git apply` is
- * all-or-nothing, so a refusal leaves the checkout untouched. `patches` is
- * every patch that may be applied alongside, so their changes in shared files
- * are told apart from this one's.
+ * Applies (`forward`) or removes (`reverse`) one patch all-or-nothing, returning whether git
+ * accepted it. `patches` are those that may be applied alongside, so shared-file changes are told
+ * apart.
  */
 export const changeHermesPatch = Effect.fn("changeHermesPatch")(function* (
   checkoutRoot: string,

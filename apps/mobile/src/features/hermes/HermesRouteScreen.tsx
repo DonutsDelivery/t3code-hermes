@@ -700,12 +700,7 @@ function HindsightMemoryScreen({
             <ActionButton
               label="Memory settings"
               icon={<IconSettings size={18} color={String(iconColor)} />}
-              onPress={() =>
-                navigation.navigate("SettingsSheet", {
-                  screen: "SettingsContent",
-                  params: { screen: "SettingsEnvironmentDetail", params: { environmentId } },
-                })
-              }
+              onPress={() => navigation.navigate("SettingsEnvironmentDetail", { environmentId })}
             />
           </View>
         ) : unavailable !== null ? (

@@ -1,21 +1,7 @@
 /**
- * Everything the Memory tab decides.
- *
- * The tab itself renders rows; this hook owns which bank, which pathway,
- * whether the view is browsing or recalling, and what the two write actions do
- * afterwards. Keeping it here is what lets the component stay a pure function
- * of one object.
- *
- * Two behaviours are worth knowing:
- *
- * - **Searching is submit-on-Enter, not as-you-type.** A recall is a semantic
- *   query against a real service; firing one per keystroke would be both slow
- *   and rude to whatever model backs it.
- * - **Retrying is just asking again.** The environment discards a stale
- *   `offline` verdict on the next read, so the retry button refreshes the same
- *   atoms rather than carrying a flag through the contract.
- *
- * @module state/hindsight
+ * Memory tab state: bank, pathway, browse vs. recall, and write follow-ups. Search submits on
+ * Enter, never per keystroke, and retry is just another read because the server discards stale
+ * `offline` verdicts.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {

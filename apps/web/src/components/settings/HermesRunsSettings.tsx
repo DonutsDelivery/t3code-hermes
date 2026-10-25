@@ -1,11 +1,6 @@
 /**
- * Hermes runs settings — which of Hermes's background tasks become threads.
- *
- * The environment lists every webhook route and scheduled job Hermes has, in
- * every profile. Switching one on mirrors each of its runs into a thread in
- * the chosen project: live while Hermes works, with its pull request linked.
- *
- * @module HermesRunsSettings
+ * Which Hermes webhook routes and scheduled jobs, in every profile, mirror their runs into threads
+ * in the chosen project.
  */
 import type { EnvironmentId, HermesRunSource, ProjectId } from "@t3tools/contracts";
 import { useState } from "react";

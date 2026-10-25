@@ -1,14 +1,6 @@
 /**
- * Client-side view of the Hermes cron subscription.
- *
- * The environment streams two kinds of event — a snapshot when the task list
- * changed, and a one-off announcement when a run finished. A React panel wants
- * neither of those directly; it wants "the current tasks, plus whether
- * something just landed". This module folds the stream into exactly that, so
- * both web and mobile can render from one shape and no client has to remember
- * which event it saw last.
- *
- * @module state/hermesCron
+ * Folds the Hermes cron stream (snapshots and run announcements) into current tasks plus whether
+ * something just landed, so web and mobile render one shape.
  */
 import type {
   HermesCronJob,

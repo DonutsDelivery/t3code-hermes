@@ -1,31 +1,8 @@
 /**
- * HermesChatHubService — thread hubs for Hermes gateway conversations.
- *
- * A hub is one pinned thread plus a set of platform channels. Conversations in
- * those channels appear in the hub thread as cards: run-less notification turn
- * items that follow the conversation's newest activity. Conversations get into
- * a hub two ways. The gateway appends a line to `<hermesHome>/t3-hub-links.jsonl`
- * whenever someone asks for one, which this service tails and turns into a
- * manual link to the named hub's thread. An auto-linking hub derives its own
- * links: its newest conversations, up to its cap, recomputed every pass. The
- * client can also link a conversation into any thread, or detach it.
- *
- * Manual links persist to an atomic JSON state file under the config state dir,
- * like the run sources; hub links are derived and never stored. Cards are
- * edited in place: an unlink does not remove a card that already exists, and
- * a card is only rewritten when its conversation's activity moved, so a quiet
- * hub costs one settings read per tick and nothing else.
- *
- * A card is never a message: `message.dispatch` would queue a provider run, so
- * cards land straight in the event sink like imported history, and the hub
- * thread is marked unread afterwards (a hub thread with no completed run
- * rejects that, which is fine and only logged).
- *
- * Cost: one settings read per tick with nothing configured; otherwise one
- * indexed channel read and one links-file tail per pass, 30s idle, 5s after a
- * pass that changed anything.
- *
- * @module HermesChatHubService
+ * Thread hubs for Hermes gateway conversations: cards in a pinned thread, linked from the gateway's
+ * links file, auto-linking caps, or the client. Cards are written to the event sink (never
+ * `message.dispatch`) and rewritten only when activity moves. Manual links persist atomically; hub
+ * links are derived. Polls every 30s idle, 5s after a change.
  */
 import {
   CommandId,

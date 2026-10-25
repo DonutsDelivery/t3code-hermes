@@ -1,26 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Readers for Hermes Agent's own cron state.
- *
- * Hermes keeps scheduled jobs in `<hermes home>/cron/jobs.json` and appends
- * every execution attempt to a durable SQLite ledger at
- * `<hermes home>/cron/executions.db`. Both are read here directly.
- *
- * Reading the state rather than shelling out to `hermes cron list` is a
- * deliberate choice: as of Hermes 0.20.2 the `cron` subcommand has no `--json`
- * mode (its sibling `kanban` does), so `cron list` and `cron runs` emit
- * ANSI-coloured, box-drawn prose intended for a terminal. Parsing that would
- * break on a cosmetic change. The two state files are the same thing the CLI
- * itself reads, are documented storage, and are cheap to poll.
- *
- * Everything here is defensive. These files belong to another application that
- * upgrades on its own schedule and that tolerates hand edits, so a malformed
- * record is skipped rather than allowed to fail the whole read.
- *
- * Verified against Hermes Agent 0.20.2. See `hermesCronFixtures.ts` for the
- * pinned shapes and what to do when an upgrade changes them.
- *
- * @module hermesCronState
+ * Readers for Hermes Agent's `cron/jobs.json` and `cron/executions.db`. Read directly because
+ * `hermes cron` has no JSON output (as of 0.20.2). Defensive: malformed records are skipped.
+ * Verified against 0.20.2; see `hermesCronFixtures.ts` when an upgrade changes them.
  */
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -99,15 +81,8 @@ export interface EnabledHermesInstance {
 }
 
 /**
- * The enabled Hermes instance, or `null` when none is enabled.
- *
- * Resolved like the provider registry does: the default `hermes` slot runs
- * with the driver's default (disabled) config until the Settings switch
- * writes an explicit `providerInstances` entry for it. The default slot is
- * preferred over custom instances.
- *
- * The instance `environment` matters: it can point `HERMES_HOME` at a
- * different store, and cron reads and CLI calls must follow it.
+ * The enabled Hermes instance (default slot first), or `null`, resolved like the provider registry.
+ * Its `environment` matters: `HERMES_HOME` there redirects cron reads and CLI calls.
  */
 export function resolveEnabledHermesInstance(
   settings: ServerSettings,
@@ -216,11 +191,9 @@ function hasPauseMarker(job: Record<string, unknown>): boolean {
 
 /**
  * Port of Hermes's `effective_job_state`.
- *
- * The subtlety worth preserving: `enabled: true` is authoritative, so a record
- * that still carries a stale `paused` label reads as scheduled. Hermes learned
- * that the hard way — a list that showed every job as paused while the
- * scheduler happily kept firing them.
+ * The subtlety worth preserving: `enabled: true` is authoritative, so a record that still carries a
+ * stale `paused` label reads as scheduled. Hermes learned that the hard way — a list that showed
+ * every job as paused while the scheduler happily kept firing them.
  */
 export function effectiveJobState(job: Record<string, unknown>): HermesCronJobState {
   const stored = coerceText(job["state"]).trim();
@@ -378,17 +351,9 @@ export function groupRunsByJob(
 }
 
 /**
- * Reads the newest execution attempts for each requested job.
- *
- * The cap is applied **per job**, not globally: a job that fires every five
- * minutes must not crowd a quiet weekly job out of the snapshot, and must not
- * keep its own old runs from the notification ledger. One `SELECT` per job is
- * deliberate — SQLite has no practical per-`IN`-group LIMIT, and each of these
- * stays on the `(job_id, claimed_at DESC, id DESC)` index Hermes builds.
- *
- * Returns `null` when the ledger cannot be opened at all — a fresh Hermes
- * install has jobs before it has ever run one, and the panel is still useful
- * without history, so this is a soft failure rather than an error.
+ * The newest attempts per job, capped per job so a frequent job can't crowd out a quiet one; one
+ * indexed `SELECT` per job. `null` when the ledger can't be opened, as on a fresh install with no
+ * runs yet.
  */
 export function readHermesCronRuns(
   dbPath: string,

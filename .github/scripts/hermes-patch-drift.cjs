@@ -1,20 +1,7 @@
 #!/usr/bin/env node
-// Checks the carried Hermes patches (infra/hermes/patches.json) against a
-// checkout of Hermes main, for .github/workflows/hermes-patches.yml.
-//
-//   check  --hermes <dir> --state <file> [--manifest <file>]
-//          Newest version of each patch: applies, reverse-applies (obsolete),
-//          and stacks in manifest order (a patch may build on earlier ones,
-//          so applying on the stack is enough). Leaves the checkout untouched.
-//   test   --hermes <dir> --state <file> --python <bin>
-//          Runs the patch-relevant test files on the clean checkout, applies
-//          the stack to it, and runs them again. Only failures absent from the
-//          unpatched baseline count.
-//   report --state <file> --body <file> [--run-url <url>]
-//          Writes the drift issue body and the `drift` step output.
-//
-// The maintainer's resolver automation parses the issue body; keep
-// `Hermes main:` and the `- \`<id>\`: \`<status>\`` lines stable.
+// Checks infra/hermes patches against Hermes main for hermes-patches.yml: `check` (apply, obsolete,
+// stack), `test` (new failures only), and `report` (issue body and `drift` output). The resolver
+// parses the issue body; keep `Hermes main:` and `- \`<id>\`: \`<status>\`` lines stable.
 const childProcess = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");

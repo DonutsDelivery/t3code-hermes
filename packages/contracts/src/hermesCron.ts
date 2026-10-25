@@ -1,21 +1,7 @@
 /**
- * Hermes cron ("Tasks") contract.
- *
- * Hermes Agent schedules recurring work of its own, outside any T3 Code turn:
- * job records live in the Hermes home under `cron/jobs.json` and every
- * execution attempt is appended to a durable ledger at `cron/executions.db`.
- * T3 Code reads that state and renders it as a read-mostly Tasks panel.
- *
- * The surface is deliberately narrow. Creating, editing, and deleting jobs
- * stays in chat — you ask Hermes for a recurring task in natural language and
- * it writes the job itself. The only mutations that cross this wire are the
- * two reversible ones a panel needs: pause/resume a job, and mute/unmute its
- * completion notifications.
- *
- * Snapshots are pushed only when they differ from the last one a client saw,
- * so an idle Tasks panel costs nothing on the socket.
- *
- * @module hermesCron
+ * Hermes cron ("Tasks") contract over `cron/jobs.json` and `cron/executions.db`. Authoring stays in
+ * chat; the only mutations are pause/resume and mute/unmute. Snapshots are pushed only when they
+ * change.
  */
 import * as Schema from "effect/Schema";
 
@@ -176,11 +162,9 @@ export type HermesCronSnapshot = typeof HermesCronSnapshot.Type;
 
 /**
  * A run that reached a terminal state since the environment last looked.
- *
- * These ride the subscription rather than a separate notification channel:
- * clients that are watching raise their own toast, and a client that connects
- * later gets the snapshot without a backlog of announcements for runs that
- * finished while it was away.
+ * These ride the subscription rather than a separate notification channel: clients that are
+ * watching raise their own toast, and a client that connects later gets the snapshot without a
+ * backlog of announcements for runs that finished while it was away.
  */
 export const HermesCronRunCompleted = Schema.Struct({
   jobId: HermesCronJobId,

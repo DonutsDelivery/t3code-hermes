@@ -1,11 +1,6 @@
 /**
- * Tasks tab — Hermes's own scheduled jobs.
- *
- * Read-mostly by design. Creating and editing tasks stays in chat, so the only
- * controls here are the two reversible ones: pause/resume and mute/unmute.
- *
- * The component is deliberately dumb; everything that decides anything lives in
- * `useHermesCron` and the client-runtime fold behind it.
+ * Hermes's scheduled jobs. Authoring stays in chat, so the only controls are pause/resume and
+ * mute/unmute; decisions live in `useHermesCron`.
  */
 import {
   describeHermesJobStatus,

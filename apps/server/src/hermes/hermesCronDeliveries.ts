@@ -158,18 +158,10 @@ function readDelivery(
 }
 
 /**
- * `run_job` persists the agent's messages in state.db even for local/no-gateway jobs.
- * The optional target-chat mirror is OFF by default and uses a USER message, not
- * the cron assistant. Read the cron session instead. deliveries.db is preferred
- * when observed (notably for composed failure notices), but `_finish`, recovery,
- * and wait-timeout immediately erase ALL terminal payloads, not just old rows.
- * A polling reader cannot rely on catching them, even with a cache.
- *
- * Hermes has no execution→session foreign key: `cron_<job>_<local wall clock>`
- * identifies a root, and its epoch started_at must fall inside this attempt.
- * Fail closed on ambiguous roots rather than show a different run's message.
- * Follow only compression continuations, never delegates or branches. Script-only
- * and early-failure runs can have neither source: explicitly report unavailable.
+ * Reads the cron session's messages from state.db, preferring deliveries.db when observed, since
+ * its terminal payloads are erased promptly. Roots match `cron_<job>_<local time>` with
+ * `started_at` inside the attempt; ambiguous roots fail closed. Follow compression continuations
+ * only; runs with no source report unavailable.
  */
 function readSessionOutput(
   database: NodeSqlite.DatabaseSync | null,

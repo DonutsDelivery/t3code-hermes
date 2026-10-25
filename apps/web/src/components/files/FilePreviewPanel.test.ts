@@ -6,7 +6,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { remapFileCommentAnnotations } from "./fileCommentAnnotations";
 import {
   filePreviewReadErrorMessage,
-  previewAssetKind,
   resolveFilePreviewPath,
   setMarkdownTaskChecked,
   shouldShowFileExplorer,
@@ -100,18 +99,6 @@ describe("resolveFilePreviewPath", () => {
   });
 });
 
-describe("previewAssetKind", () => {
-  it.each([
-    ["/repo/assets/logo.png", "workspace-file"],
-    ["/repo/nested/deep/a.gif", "workspace-file"],
-    ["/home/me/previews/a.gif", "media-file"],
-    ["/repo-sibling/a.png", "media-file"],
-    ["/repo", "media-file"],
-  ] as const)("serves %j as %s", (path, kind) => {
-    expect(previewAssetKind(path, "/repo")).toBe(kind);
-  });
-});
-
 describe("workspaceAssetResource", () => {
   const input = {
     kind: "workspace-file" as const,
@@ -123,11 +110,36 @@ describe("workspaceAssetResource", () => {
     absolutePath: "/repo/docs/index.html",
   };
 
+  it.each([
+    ["/repo/assets/logo.png", "workspace-file"],
+    ["/repo/nested/deep/a.gif", "workspace-file"],
+    ["/home/me/previews/a.gif", "media-file"],
+    ["/repo-sibling/a.png", "media-file"],
+    ["/repo", "media-file"],
+  ] as const)("serves %j as %s", (absolutePath, tag) => {
+    expect(workspaceAssetResource({ ...input, absolutePath, draft: false })._tag).toBe(tag);
+  });
+
+  // regression: #21067 images outside the workspace load through the host media resource
+  it("serves a file outside the workspace as host media and keeps workspace files on workspace access", () => {
+    expect(
+      workspaceAssetResource({ ...input, absolutePath: "/tmp/screenshots/shot.png", draft: false }),
+    ).toEqual({ _tag: "media-file", threadId: "thread-1", path: "/tmp/screenshots/shot.png" });
+    expect(workspaceAssetResource({ ...input, draft: false })).toEqual({
+      _tag: "workspace-file",
+      threadId: "thread-1",
+      path: "/repo/docs/index.html",
+    });
+  });
+
   it("names the workspace root for a draft, which the server cannot resolve from a thread", () => {
     expect(workspaceAssetResource({ ...input, draft: true })).toEqual({
       _tag: "draft-workspace-file",
       cwd: "/repo",
       path: "/repo/docs/index.html",
     });
+    expect(
+      workspaceAssetResource({ ...input, absolutePath: "/tmp/screenshots/shot.png", draft: true }),
+    ).toEqual({ _tag: "draft-workspace-file", cwd: "/repo", path: "/tmp/screenshots/shot.png" });
   });
 });

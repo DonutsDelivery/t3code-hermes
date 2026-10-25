@@ -1,12 +1,8 @@
 // Fixtures write a real Hermes state.db through node:sqlite, as Hermes itself would.
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Hermes `state.db` shapes pinned for tests.
- *
- * `HERMES_STATE_DDL` is the `system_prompts`, `sessions` and `messages` DDL Hermes Agent 0.21.0
- * executes (`hermes_state_common.py`, schema version 30), copied verbatim. If
- * a Hermes upgrade changes a column the run reader depends on, update it here
- * from the new source and let `hermesRunState.test.ts` say what broke.
+ * Hermes `state.db` DDL from Hermes Agent 0.21.0 (`hermes_state_common.py`, schema 30), verbatim.
+ * Update it from the new source when an upgrade changes a column the run reader uses.
  */
 import * as NodeSqlite from "node:sqlite";
 

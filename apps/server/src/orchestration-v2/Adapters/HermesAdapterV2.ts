@@ -1,12 +1,7 @@
 /**
- * Hermes Agent (NousResearch/hermes-agent) over ACP stdio (`hermes acp`), as a
- * flavor of the shared ACP adapter. What differs from stock ACP: reasoning
- * effort lives in Hermes's `config.yaml`, delegated children arrive as one
- * `delegate_task` tool call, and the carried `acp-background-reports` patch
- * reports background processes and asks the client to prompt it once they
- * finish.
- *
- * @module orchestration-v2/Adapters/HermesAdapterV2
+ * Hermes Agent over ACP stdio (`hermes acp`) as a flavor of the shared ACP adapter. Differs by:
+ * reasoning effort in `config.yaml`, delegations as one `delegate_task` call, and the
+ * `acp-background-reports` patch reporting background processes.
  */
 import {
   HermesSettings,
@@ -173,13 +168,9 @@ export function makeHermesAcpAdapterFlavor(
         ),
       ),
     /**
-     * Hermes resolves reasoning effort from `config.yaml` when it builds an
-     * agent, and `session/set_model` rebuilds it, so the level is written first
-     * and an unchanged model is re-sent when only the level moved. Hermes also
-     * exposes its edit-approval policy as session modes; a build that offers
-     * no matching mode, or rejects the switch, still runs, because T3's own
-     * permission policy is what enforces approvals. Fast mode is a session
-     * option Hermes re-pins on every turn, so it survives the model rebuild.
+     * Hermes builds its agent from `config.yaml`, so the level is written first and an unchanged
+     * model is re-sent when only the level moved. Edit-approval modes are best-effort since T3's
+     * permission policy enforces approvals. Fast mode is re-pinned per turn.
      */
     applyModelSelection: Effect.fn("HermesAdapterV2.applyModelSelection")(function* ({
       runtime,

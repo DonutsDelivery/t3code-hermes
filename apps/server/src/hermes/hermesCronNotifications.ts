@@ -1,10 +1,7 @@
 /**
  * Decides which Hermes cron runs deserve a notification.
- *
- * Kept separate from the polling service so the rule that actually matters —
- * never notify about history — is testable without a clock, a socket, or a
- * Hermes install.
- *
+ * Kept separate from the polling service so the rule that actually matters — never notify about
+ * history — is testable without a clock, a socket, or a Hermes install.
  * @module hermesCronNotifications
  */
 import type { HermesCronDelivery } from "@t3tools/contracts";
@@ -52,16 +49,9 @@ export interface DiffRunsInput {
 }
 
 /**
- * Returns the runs that reached a terminal state since the previous poll.
- *
- * The first poll always returns nothing. A server that restarts overnight
- * would otherwise wake up, read a ledger full of runs it has never seen, and
- * fire a notification for every one of them — the single worst thing this
- * feature could do. "New" is therefore defined strictly against a previous
- * observation, never against a timestamp.
- *
- * A run that was in flight last poll and is terminal now counts as new, so a
- * long-running job still notifies exactly once when it lands.
+ * Runs that reached a terminal state since the previous poll. The first poll returns nothing, so a
+ * restarted server never re-notifies a ledger of old runs; a run in flight last poll and terminal
+ * now still notifies once.
  */
 export function diffCompletedRuns(input: DiffRunsInput): readonly HermesCronRunNotification[] {
   if (input.previous === null) return [];

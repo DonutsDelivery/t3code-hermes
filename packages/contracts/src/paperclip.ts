@@ -1,29 +1,7 @@
 /**
- * Paperclip contract.
- *
- * [Paperclip](https://github.com/paperclipai/paperclip) runs a company of
- * agents: an org chart of agents, projects, and issues the agents work through
- * in heartbeat runs. T3 Code shows one company at a glance in the Paperclip
- * surface of the right panel.
- *
- * Every byte goes through the environment's server. Paperclip usually sits on
- * a LAN or tailnet address a phone or tunnel client cannot reach, and its API
- * key must not leave the server process.
- *
- * Read-only by design. The recommended key is a board API key minted by a
- * Paperclip user holding the company's `viewer` role, which Paperclip itself
- * refuses to let write. A stronger key still only reads here; acting on
- * Paperclip is a separate, later surface.
- *
- * Reads never fail for an unreachable service: the overview always answers
- * with a {@link PaperclipStatus} so the panel says "Paperclip is not answering"
- * instead of rendering an error toast over an empty board.
- *
- * Statuses, roles, and actions are plain strings rather than literal unions:
- * Paperclip adds them often, and a new agent status is a row worth showing,
- * not a decode failure.
- *
- * @module paperclip
+ * Paperclip contract for the read-only right-panel surface. All traffic goes through the server so
+ * the API key stays there; reads answer with a {@link PaperclipStatus}. Statuses, roles, and
+ * actions stay plain strings because Paperclip adds them often.
  */
 import * as Schema from "effect/Schema";
 
@@ -177,11 +155,9 @@ export type PaperclipOverviewInput = typeof PaperclipOverviewInput.Type;
 
 /**
  * The whole company in one answer.
- *
- * One round trip rather than a call per list: the panel renders all of it at
- * once, and the server fans out to Paperclip in parallel. Lists are trimmed to
- * what a side panel shows, so the payload stays small however big the company
- * grows.
+ * One round trip rather than a call per list: the panel renders all of it at once, and the server
+ * fans out to Paperclip in parallel. Lists are trimmed to what a side panel shows, so the payload
+ * stays small however big the company grows.
  */
 export const PaperclipOverviewResult = Schema.Struct({
   status: PaperclipStatus,

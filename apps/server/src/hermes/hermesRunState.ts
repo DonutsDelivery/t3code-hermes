@@ -1,22 +1,9 @@
 // Hermes's state.db is read with node:sqlite's synchronous read-only API, like the cron ledger.
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Readers for the Hermes state behind background runs.
- *
- * Hermes does work outside any chat: webhook routes run an agent per incoming
- * delivery, and cron jobs run one per firing. Every run is an ordinary Hermes
- * session in the profile's `state.db`, with `source` set to `webhook` or
- * `cron`. Which routes and jobs exist comes from the profile's own config:
- * routes from `config.yaml` (`platforms.webhook.extra.routes`) and
- * `webhook_subscriptions.json`, jobs from `cron/jobs.json`.
- *
- * Everything here is read-only and defensive, like `hermesCronState`: Hermes
- * upgrades on its own schedule and tolerates hand edits, so anything malformed
- * is skipped rather than failing the whole read.
- *
- * Verified against Hermes Agent 0.21.0 (state schema 30).
- *
- * @module hermesRunState
+ * Readers for Hermes background runs: webhook and cron sessions in the profile's `state.db`, with
+ * sources from `config.yaml`, `webhook_subscriptions.json`, and `cron/jobs.json`. Read-only and
+ * defensive. Verified against Hermes Agent 0.21.0 (schema 30).
  */
 import * as NodeSqlite from "node:sqlite";
 

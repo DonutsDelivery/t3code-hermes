@@ -1,18 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - Hermes's control socket is a unix socket; Effect has no client for one.
 /**
- * Reads the Hermes gateway serving a Hermes home, to tell whether it still
- * runs code from before a patch changed the checkout.
- *
- * The gateway answers `identify` on its control socket
- * (`<home>/gateway.sock`, or the path in `gateway.sock.path` when the home is
- * too long for a socket path). An answer is the liveness check: a stale
- * `gateway.pid` from a crash has nobody behind the socket. The gateway writes
- * `gateway.pid` once at startup, so that file's mtime is when it started.
- *
- * Verified against hermes-agent `8d30c4eaab` (`gateway/control_socket.py`,
- * protocol 1).
- *
- * @module hermesGateway
+ * Reads the gateway serving a Hermes home to tell whether it predates a patch. An `identify` answer
+ * on its control socket proves liveness; `gateway.pid`'s mtime is its start time. Verified against
+ * hermes-agent `8d30c4eaab` (`gateway/control_socket.py`, protocol 1).
  */
 import * as NodeFSP from "node:fs/promises";
 import * as NodeNet from "node:net";

@@ -41,13 +41,16 @@ function thread(id: string, working: boolean) {
 describe("createInboxReturnTracker", () => {
   it("stamps a thread when it stops working, but never on the first observation", () => {
     const tracker = createInboxReturnTracker();
-    tracker.observe([thread("a", true), thread("b", false)]);
-    expect(tracker.returnedAt(thread("a", true))).toBeUndefined();
-    expect(tracker.returnedAt(thread("b", false))).toBeUndefined();
+    const first = tracker.observe([thread("a", true), thread("b", false)]);
+    expect(first(thread("a", true))).toBeUndefined();
+    expect(first(thread("b", false))).toBeUndefined();
 
-    tracker.observe([thread("a", false), thread("b", false)]);
-    expect(tracker.returnedAt(thread("a", false))).toBeDefined();
-    expect(tracker.returnedAt(thread("b", false))).toBeUndefined();
+    const second = tracker.observe([thread("a", false), thread("b", false)]);
+    expect(second(thread("a", false))).toBeDefined();
+    expect(second(thread("b", false))).toBeUndefined();
+    expect(tracker.returnedAt(thread("a", false))).toBe(second(thread("a", false)));
+    // An earlier observation keeps its answer, so lists built from it stay valid.
+    expect(first(thread("a", false))).toBeUndefined();
   });
 });
 
@@ -138,13 +141,17 @@ describe("threadIsMonitoring", () => {
     expect(threadIsMonitoring({ ...settled, settledOverride: "settled" as const })).toBe(false);
   });
 
-  it("monitors provider monitors only when nothing else holds the thread", () => {
-    const monitor = { taskId: "monitor", kind: "monitor" as const };
+  it("monitors awaited provider monitors only when nothing else holds the thread", () => {
+    const monitor = { taskId: "monitor", kind: "monitor" as const, awaited: true as const };
+    const watchdog = { taskId: "watchdog", kind: "monitor" as const };
     const command = { taskId: "dev-server", kind: "command" as const };
     const subagent = { taskId: "subagent", kind: "subagent" as const };
     const parked = { ...thread("parked", false), runtime: runtime("idle") };
     expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [monitor, command] })).toBe(
       true,
+    );
+    expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [watchdog, command] })).toBe(
+      false,
     );
     expect(threadIsMonitoring({ ...parked, pendingBackgroundTasks: [monitor, subagent] })).toBe(
       false,

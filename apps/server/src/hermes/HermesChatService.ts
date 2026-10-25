@@ -1,16 +1,7 @@
 /**
- * HermesChatService — read-only views of Hermes gateway conversations.
- *
- * Hermes answers people on Discord and other platforms through its gateway,
- * outside any T3 thread. This service reads those conversations from the
- * default profile's `state.db` on demand, for the right-panel viewer and for
- * agents. Nothing is cached or copied into T3 Code's state, and nothing here
- * can post to a platform or start a Hermes turn.
- *
- * Reads never fail: Hermes being off, or its store missing or locked, comes
- * back as `availability` on an empty result.
- *
- * @module HermesChatService
+ * Read-only views of Hermes gateway conversations, read on demand from the default profile's
+ * `state.db`. Nothing is cached, nothing can post or start a Hermes turn, and reads never fail: an
+ * unavailable store comes back as `availability`.
  */
 import {
   HERMES_CHAT_LIST_MAX,

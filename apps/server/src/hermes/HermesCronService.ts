@@ -1,29 +1,7 @@
 /**
- * HermesCronService — reads Hermes Agent's scheduled jobs and pushes them to
- * subscribed clients.
- *
- * Hermes runs its own scheduler, so its jobs fire whether or not anyone is
- * looking at T3 Code. This service is the window onto that: it polls Hermes's
- * cron state, keeps one snapshot, and publishes a new one only when the state
- * actually differs from the last.
- *
- * Two cadences, in order of how much they cost:
- *
- * - **On demand.** A client subscribing or asking to refresh forces a read.
- * - **Subscribed poll (60s).** Runs only while at least one client is watching.
- *
- * Nothing streams continuously. An idle panel costs one read a minute and zero
- * websocket frames; polling stops when the last client subscription closes.
- *
- * Cron completion/failure notifications are therefore connected-client-only:
- * they ride the same subscription that the 60s poll keeps alive. The web
- * notification coordinator holds one subscription per connected Hermes-bearing
- * environment. Reconnecting shows history without replaying old announcements.
- *
- * The service is completely inert when the Hermes provider is disabled: no
- * timers, no file reads, no subprocess.
- *
- * @module HermesCronService
+ * Polls Hermes Agent's cron state and pushes changed snapshots: on subscribe or refresh, and every
+ * 60s only while a client is subscribed. Completion notifications therefore reach connected clients
+ * only. Fully inert while the Hermes provider is disabled.
  */
 import {
   HERMES_CRON_CONTRACT_VERSION,
@@ -195,7 +173,7 @@ function emptySnapshot(
   };
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settingsService = yield* ServerSettings.ServerSettingsService;

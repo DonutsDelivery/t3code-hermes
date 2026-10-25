@@ -1,11 +1,6 @@
 /**
- * Paperclip settings — where an environment's Paperclip company lives.
- *
- * The connection row reads what the server actually resolved, including who
- * the key acts as and whether Paperclip lets it write, so it cannot claim a
- * connection the Paperclip surface does not have.
- *
- * @module PaperclipSettings
+ * Where an environment's Paperclip company lives. The connection row shows what the server
+ * resolved, including the key's identity and write access.
  */
 import {
   describePaperclipConnection,

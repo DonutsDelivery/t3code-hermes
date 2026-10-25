@@ -243,8 +243,6 @@ function ModelPickerProviderNotices({
   );
 }
 
-// Owns the list's measured height and scroll fades, which change on every scroll and
-// resize without touching the picker's model lists.
 function ModelPickerList({
   listRef,
   itemKeys,
@@ -272,9 +270,8 @@ function ModelPickerList({
     setShowBottomScrollFade(maxScrollOffset - scrollElement.scrollTop > 1);
   };
 
-  // Keyed by content: a new disabled-reason closure rebuilds an identical key array.
+  // Disabled-reason closures rebuild identical key arrays; compare contents.
   const itemListKey = JSON.stringify(itemKeys);
-  // A new list starts from the top until the measurement below lands.
   const [fadesResetFor, setFadesResetFor] = useState(itemListKey);
   if (fadesResetFor !== itemListKey) {
     setFadesResetFor(itemListKey);
@@ -329,7 +326,7 @@ function ModelPickerList({
   );
 }
 
-// Capture phase, so model and provider shortcuts win over the composer underneath.
+// Capture gives picker shortcuts priority over the composer.
 function WindowKeyDownListener({ onKeyDown }: { onKeyDown: (event: KeyboardEvent) => void }) {
   const handleKeyDown = useEffectEvent(onKeyDown);
   useEffect(() => {
@@ -430,10 +427,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (favorites.length > 0) {
         return "favorites";
       }
-      // The composer's instance can legitimately offer nothing to pick — an
-      // uninstalled CLI, or a project default naming a provider this host
-      // never configured. Priming there renders "No models found" with no
-      // hint that other rails are populated, so fall through to the first
+      // The composer's instance can legitimately offer nothing to pick — an uninstalled CLI, or a
+      // project default naming a provider this host never configured. Priming there renders "No
+      // models found" with no hint that other rails are populated, so fall through to the first
       // instance that can actually contribute models.
       const hasModels = (instanceId: ProviderInstanceId): boolean =>
         (modelOptionsByInstance.get(instanceId)?.length ?? 0) > 0;
@@ -727,7 +723,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     return notice ? [{ instanceId: entry.instanceId, notice }] : [];
   });
 
-  // The first selectable models get the numbered jump shortcuts, in list order.
   const modelJumpModelKeys = visibleModels
     .filter((model) => !getModelDisabledReason?.(model.instanceId, model.slug))
     .slice(0, MODEL_PICKER_JUMP_KEYBINDING_COMMANDS.length)
