@@ -25,6 +25,7 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/process";
 
 import type * as EffectAcpSchema from "effect-acp/compat";
@@ -155,6 +156,8 @@ const runMockTurn = (input: {
   readonly idleUpdates?: ReadonlyArray<EffectAcpSchema.SessionUpdate>;
   /** Text of a wake turn run after the first, as the continuation worker would send it. */
   readonly wakeTurnText?: Effect.Effect<string>;
+  /** Runs the buffered continuation the idle updates offered, through its quiet window. */
+  readonly runContinuation?: boolean;
 }) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -257,6 +260,27 @@ const runMockTurn = (input: {
     const events: Array<ProviderAdapterV2Event> = Array.from(yield* untilTerminal);
     for (const update of idleUpdates ?? []) {
       yield* deliver!({ sessionId: sessionIdSeen!, update });
+    }
+    if (input.runContinuation === true) {
+      const continuation = turnInput({
+        threadId,
+        providerThread,
+        runtimePolicy: policy,
+        now: yield* DateTime.now,
+        model: modelSelection.model,
+        ordinal: 2,
+      });
+      yield* session.startTurn({
+        ...continuation,
+        message: {
+          ...continuation.message,
+          createdBy: "agent",
+          creationSource: "provider",
+          text: "Background activity updated",
+        },
+      });
+      yield* TestClock.adjust("3 seconds");
+      events.push(...(yield* untilTerminal));
     }
     if (input.wakeTurnText !== undefined) {
       const wake = turnInput({
@@ -475,7 +499,7 @@ describe.skipIf(windowsHost)("HermesAdapterV2 against the mock agent", () => {
   it.effect("offers a wake run for a turn the Hermes gateway runs after the prompt settled", () =>
     Effect.gen(function* () {
       const offers = yield* Queue.unbounded<ProviderContinuationRequest>();
-      yield* runMockTurn({
+      const { events } = yield* runMockTurn({
         name: "idle-gateway-turn",
         mockEnvironment: {},
         promptUpdates: [
@@ -490,9 +514,23 @@ describe.skipIf(windowsHost)("HermesAdapterV2 against the mock agent", () => {
         continuationRequests: {
           offer: (request) => Queue.offer(offers, request).pipe(Effect.asVoid),
         },
+        runContinuation: true,
       });
       // A flavor without post-settle continuation drops these frames: the agent works, the thread stays blank.
       assert.equal(yield* Queue.size(offers), 1);
+      const wakeEvents = events.slice(
+        events.findIndex((event) => event.type === "turn.terminal") + 1,
+      );
+      assert.isTrue(
+        wakeEvents.some(
+          (event) =>
+            event.type === "message.updated" &&
+            event.message.role === "assistant" &&
+            event.message.text.includes("The merge landed."),
+        ),
+      );
+      const wakeTerminal = wakeEvents.at(-1);
+      assert.equal(wakeTerminal?.type === "turn.terminal" && wakeTerminal.status, "completed");
     }).pipe(Effect.provide(testLayer), Effect.scoped),
   );
 

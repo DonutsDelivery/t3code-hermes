@@ -6262,6 +6262,15 @@ describe("AcpAdapterV2", () => {
           messageText: "Background task completed.",
         }),
       );
+      // Frames that keep arriving join the open continuation; ending early would offer another wake.
+      for (const text of [" still", " streaming"]) {
+        yield* TestClock.adjust("2 seconds");
+        yield* sessionUpdateHandler!({
+          sessionId: "mock-session-1",
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+        });
+        assert.lengthOf(continuationRequests, 1);
+      }
       // No prompt answers a drained continuation, so only the quiet window can end it.
       yield* TestClock.adjust("3 seconds");
       assert.deepEqual(yield* takeTerminal(2), { status: "completed", agentTurnTextSeen: true });
